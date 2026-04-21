@@ -597,15 +597,17 @@ function initializeWireframeEngine(container) {
         else if (action === 'open-data-menu')      { executeViewerOpenDataMenu(null); }
     }
 
-    // Sidebar-scoped dropdown selection helper
+    // Sidebar-scoped dropdown selection helper — returns the matched dropdown (or null)
     function _sidebarSelectDropdown(sidebar, value) {
-        if (!value || value.indexOf(':') === -1) return;
+        if (!value || value.indexOf(':') === -1) return null;
         var parts = value.split(':');
         var targetLabel = parts[0].trim().toLowerCase();
         var targetValue = parts.slice(1).join(':').trim().toLowerCase();
         var panel = wireframeSidebar && wireframeSidebar.querySelector('[data-sidebar-panel="' + sidebar + '"]');
-        if (!panel) return;
+        if (!panel) return null;
+        var matched = null;
         panel.querySelectorAll('select').forEach(function(dropdown) {
+            if (matched) return;
             var label = dropdown.previousElementSibling;
             if (label && label.textContent.trim().toLowerCase().indexOf(targetLabel) !== -1) {
                 for (var i = 0; i < dropdown.options.length; i++) {
@@ -614,11 +616,13 @@ function initializeWireframeEngine(container) {
                         dropdown.selectedIndex = i;
                         dropdown.style.background = 'rgba(199, 93, 44, 0.3)';
                         (function(d) { setTimeout(function() { d.style.background = ''; }, 800); }(dropdown));
+                        matched = dropdown;
                         break;
                     }
                 }
             }
         });
+        return matched;
     }
 
     function _sidebarClickButton(sidebar, value) {
@@ -731,12 +735,8 @@ function initializeWireframeEngine(container) {
                         }
                     }
                 } else if (action === 'select-dropdown') {
-                    _sidebarSelectDropdown(sidebar, value);
-                    var panel = wireframeSidebar && wireframeSidebar.querySelector('[data-sidebar-panel="' + sidebar + '"]');
-                    if (panel && !step.noHighlight) {
-                        var activeSelect = panel.querySelector('select');
-                        if (activeSelect) briefHighlight(activeSelect, step.delay);
-                    }
+                    var matchedDropdown = _sidebarSelectDropdown(sidebar, value);
+                    if (matchedDropdown && !step.noHighlight) briefHighlight(matchedDropdown, step.delay);
                 } else if (action === 'click-button') {
                     _sidebarClickButton(sidebar, value);
                 } else if (action === 'open-data-menu') {
