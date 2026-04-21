@@ -59,7 +59,7 @@
             })
             .then(function() {
                 // Finally load and execute JavaScript
-                return loadScript(basePath + 'wireframe-controller.js');
+                return loadScript(basePath + 'wireframe-engine.js');
             })
             .catch(function(error) {
                 console.error('Error loading wireframe components:', error);

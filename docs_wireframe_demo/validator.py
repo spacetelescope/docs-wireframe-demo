@@ -78,6 +78,12 @@ def validate_wireframe_sequence(sequence_str, option_name, docname, lineno, logg
                         location=(docname, lineno)
                     )
 
+        # CSS selector steps (start with # . or [) — skip all further validation;
+        # the engine handles these at runtime
+        first_char = working_item[0] if working_item else ''
+        if first_char in ('#', '.', '['):
+            continue
+
         # Parse sidebar:action or sidebar:action=value
         if ':' in working_item:
             colon_index = working_item.index(':')

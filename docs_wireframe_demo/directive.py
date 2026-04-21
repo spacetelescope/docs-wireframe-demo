@@ -8,20 +8,37 @@ from docutils import nodes
 from sphinx.util.docutils import SphinxDirective
 from sphinx.util import logging
 
-from .content import generate_content_for_sidebar
 from .validator import validate_wireframe_sequence
 
 
-def _load_asset(filename):
-    """Read a bundled static asset as text."""
+def _load_asset(filename, assets_dir=None):
+    """Read a static asset as text, preferring ``assets_dir`` over bundled defaults."""
+    if assets_dir:
+        import os
+        path = os.path.join(assets_dir, filename)
+        if os.path.isfile(path):
+            with open(path, 'r', encoding='utf-8') as f:
+                return f.read()
     pkg_files = importlib.resources.files('docs_wireframe_demo')
     return (pkg_files / '_static' / filename).read_text(encoding='utf-8')
 
 
-def _load_asset_bytes(filename):
-    """Read a bundled static asset as bytes."""
+def _load_asset_bytes(filename, assets_dir=None):
+    """Read a static asset as bytes, preferring ``assets_dir`` over bundled defaults."""
+    if assets_dir:
+        import os
+        path = os.path.join(assets_dir, filename)
+        if os.path.isfile(path):
+            with open(path, 'rb') as f:
+                return f.read()
     pkg_files = importlib.resources.files('docs_wireframe_demo')
     return (pkg_files / '_static' / filename).read_bytes()
+
+
+def _load_engine_js():
+    """Load the generic wireframe engine JS from the package bundle (never overridden)."""
+    pkg_files = importlib.resources.files('docs_wireframe_demo')
+    return (pkg_files / '_static' / 'wireframe-engine.js').read_text(encoding='utf-8')
 
 
 def _apply_variables(content, variables):
@@ -52,47 +69,44 @@ class WireframeDemoDirective(SphinxDirective):
     """
     Embed an interactive wireframe demonstration.
 
-    This directive loads the wireframe HTML, CSS, and JavaScript from the
-    ``docs_wireframe_demo`` package and injects them into the documentation page.
+    This directive loads the wireframe HTML and CSS from the app's ``wireframe_assets_dir``
+    (with fallback to bundled defaults), and the generic engine JS from the package.
+    The app defines all sidebar content statically in ``wireframe-base.html``; the engine
+    runs the demo sequence by targeting elements via CSS selectors or sidebar shorthand names.
 
     Usage::
 
         .. wireframe-demo::
-           :initial: loaders,loaders:select-tab=Data
-           :demo: plugins
+           :initial: viewer-add:horiz:v1
+           :demo: plugins,plugins@1000:open-panel
            :enable-only: plugins
            :plugin-name: Aperture Photometry
-           :plugin-panel-opened: false
-           :custom-content: plugins=<html content>
+           :show-scroll-to: false
+           :demo-repeat: false
 
     Options
     -------
     initial
-        Initial state applied before demo starts, when repeating, or on restart.
-        Uses same syntax as demo. Applied quickly without delays.
+        Steps applied instantly before demo starts (and on loop/restart).
+        Uses same syntax as ``demo``.
     demo
-        Custom demo sidebar order (comma-separated list) or demo sequence.
-        Default: ``loaders,save,settings,info,plugins,subsets``
-        Can also specify actions like: ``plugins:open-panel,plugins:select-data=Image 2``
-        Can specify timing with @: ``plugins@1000:open-panel`` (1000ms delay)
+        Demo step sequence (comma-separated).
+        Sidebar shorthand: ``plugins``, ``plugins:open-panel``, ``settings:select-tab=Units``
+        CSS selector step: ``#format-select:select=2D Spectrum``, ``.expansion-panel:open-panel``
+        Timing: ``plugins@1000:open-panel`` (milliseconds before advancing)
+        No-highlight: ``plugins@500!:open-panel``
+        Viewer actions: ``viewer-add:horiz:v1``, ``viewer-legend:v1:Layer A|Layer B``
     enable-only
-        Only enable clicking on these sidebars (comma-separated).
-        Others will be disabled. If not specified, all are enabled.
+        Restrict which toolbar buttons users can click (comma-separated sidebar names).
     show-scroll-to
-        Whether to show "Learn more" scroll-to buttons. Default: false
+        Show "Learn more" scroll-to buttons in sidebar footers. Default: ``false``
     demo-repeat
-        Whether demo should loop continuously. Default: true
+        Loop demo continuously. Default: ``true``
     plugin-name
-        Name of the plugin expansion panel. Default: ``Data Analysis Plugin``
-    plugin-panel-opened
-        Whether plugin panel is open by default. Default: true
-    custom-content
-        Custom HTML content for sidebars.
-        Format: ``sidebar=content`` or ``sidebar:tab=content``
-        Replaces the default description content.
+        Substituted into ``{{ plugin_name }}`` in ``wireframe-base.html``.
+        Default: ``Data Analysis Plugin``
     viewer-image
-        Path to an image (relative to _static) to display in the viewer area.
-        The image will fill the viewer area with overflow hidden.
+        Image path (relative to ``_static``) to display in the viewer area.
     """
 
     option_spec = {
@@ -102,88 +116,59 @@ class WireframeDemoDirective(SphinxDirective):
         'show-scroll-to': str,
         'demo-repeat': str,
         'plugin-name': str,
-        'plugin-panel-opened': str,
-        'custom-content': str,
         'viewer-image': str,
     }
 
     def run(self):
+        assets_dir = self.env.app.config.wireframe_assets_dir
         try:
-            html_content = _load_asset('wireframe-base.html')
-            css_content = _load_asset('wireframe-demo.css')
-            js_content = _load_asset('wireframe-controller.js')
+            html_content = _load_asset('wireframe-base.html', assets_dir)
+            css_content  = _load_asset('wireframe-demo.css',   assets_dir)
+            js_content   = _load_engine_js()
         except Exception as e:
             error_node = nodes.error()
-            error_node += nodes.paragraph(
-                text=f'Error loading wireframe components: {e}'
-            )
+            error_node += nodes.paragraph(text=f'Error loading wireframe components: {e}')
             return [error_node]
 
         # Fix relative paths in CSS for inline embedding.
-        # When CSS is embedded in a page (e.g. /plugins/foo.html), url('api.svg')
-        # needs to become a relative path to _static/api.svg.
-        docname = self.env.docname  # e.g. 'plugins/aperture_photometry'
+        docname = self.env.docname
         depth = docname.count('/')
         static_prefix = ('../' * depth + '_static/') if depth > 0 else '_static/'
         css_content = css_content.replace("url('api.svg')", f"url('{static_prefix}api.svg')")
 
-        # Apply wireframe_variables substitutions
-        variables = self.env.app.config.wireframe_variables
-        html_content = _apply_variables(html_content, variables)
-        js_content = _apply_variables(js_content, variables)
+        # Build per-directive variables (global wireframe_variables + directive-local overrides)
+        variables = dict(self.env.app.config.wireframe_variables)
+        plugin_name = self.options.get('plugin-name', 'Data Analysis Plugin')
+        variables['plugin_name'] = plugin_name
 
-        # Add modifier class for docs pages (to distinguish from landing page)
+        # Apply variable substitutions to HTML (engine JS needs none — it is app-agnostic)
+        html_content = _apply_variables(html_content, variables)
+
+        # Add modifier class for docs pages
         html_content = html_content.replace(
             '<div class="wireframe-section">',
             '<div class="wireframe-section wireframe-docs">'
         )
 
         # Process directive options
-        initial_state = self.options.get('initial', None)
-        demo_order = self.options.get('demo', None)
-        enable_only = self.options.get('enable-only', None)
+        initial_state  = self.options.get('initial', None)
+        demo_order     = self.options.get('demo', None)
+        enable_only    = self.options.get('enable-only', None)
         show_scroll_to = self.options.get('show-scroll-to', 'false').lower() == 'true'
-        demo_repeat = self.options.get('demo-repeat', 'true').lower() == 'true'
-        plugin_name = self.options.get('plugin-name', None)
-        plugin_panel_opened = self.options.get('plugin-panel-opened', 'true').lower() == 'true'
-        custom_content = self.options.get('custom-content', None)
-        viewer_image = self.options.get('viewer-image', None)
+        demo_repeat    = self.options.get('demo-repeat', 'true').lower() == 'true'
+        viewer_image   = self.options.get('viewer-image', None)
 
         # Validate directive sequences at build time
         logger = logging.getLogger(__name__)
-        lineno = self.lineno
-
         if initial_state:
-            validate_wireframe_sequence(initial_state, 'initial', docname, lineno, logger)
+            validate_wireframe_sequence(initial_state, 'initial', docname, self.lineno, logger)
         if demo_order:
-            validate_wireframe_sequence(demo_order, 'demo', docname, lineno, logger)
+            validate_wireframe_sequence(demo_order, 'demo', docname, self.lineno, logger)
 
         # Generate unique ID for this wireframe instance
         unique_id = f"wireframe-{int(time.time() * 1000000) % 1000000}"
 
-        # Build custom content map - first from explicit custom-content option
-        custom_content_map = {}
-        if custom_content:
-            for item in custom_content.split('|'):
-                if '=' in item:
-                    sidebar, content = item.split('=', 1)
-                    custom_content_map[sidebar.strip()] = {'main': content.strip()}
-
-        # Auto-generate missing content from registry for common sidebars
-        registry = self.env.app.config.wireframe_content_registry
-        for sidebar_type in ['loaders', 'save', 'settings', 'info', 'subsets']:
-            if sidebar_type not in custom_content_map:
-                generated = generate_content_for_sidebar(registry, sidebar_type)
-                if generated:
-                    custom_content_map[sidebar_type] = generated
-
-        # Special handling for plugins - auto-generate if plugin_name provided
-        if plugin_name and 'plugins' not in custom_content_map:
-            generated = generate_content_for_sidebar(registry, 'plugins', plugin_name=plugin_name)
-            if generated:
-                custom_content_map['plugins'] = generated
-
-        # Build config object and inject as data attribute on the container
+        # Build config object
         config_obj = {}
         if initial_state:
             config_obj['initialState'] = [s.strip() for s in initial_state.split(',')]
@@ -192,12 +177,7 @@ class WireframeDemoDirective(SphinxDirective):
         if enable_only is not None:
             config_obj['enableOnly'] = [s.strip() for s in enable_only.split(',') if s.strip()]
         config_obj['showScrollTo'] = show_scroll_to
-        config_obj['demoRepeat'] = demo_repeat
-        if plugin_name:
-            config_obj['pluginName'] = plugin_name
-        config_obj['pluginPanelOpened'] = plugin_panel_opened
-        if custom_content_map:
-            config_obj['customContentMap'] = json.dumps(custom_content_map)
+        config_obj['demoRepeat']   = demo_repeat
         if viewer_image:
             config_obj['viewerImage'] = viewer_image
 
@@ -225,29 +205,17 @@ class WireframeDemoDirective(SphinxDirective):
 
 
 def copy_wireframe_assets(app, exception):
-    """Copy wireframe files from the package into the Sphinx ``_static`` output dir."""
+    """Copy wireframe static files into the Sphinx ``_static`` output dir."""
     if exception is not None or app.builder.name != 'html':
         return
 
     import os
+    assets_dir = app.config.wireframe_assets_dir
+
+    # api.svg is copied verbatim
     static_dir = os.path.join(app.outdir, '_static')
-    variables = app.config.wireframe_variables
-
-    # Files copied verbatim
-    simple_files = ['wireframe-demo.css', 'api.svg']
-
-    # Files that need variable substitution
-    template_files = ['wireframe-base.html', 'wireframe-controller.js']
-
-    for filename in simple_files:
-        dst = os.path.join(static_dir, filename)
-        dst_bytes = _load_asset_bytes(filename)
-        with open(dst, 'wb') as f:
+    for filename in ['api.svg']:
+        dst_bytes = _load_asset_bytes(filename, assets_dir)
+        with open(os.path.join(static_dir, filename), 'wb') as f:
             f.write(dst_bytes)
 
-    for filename in template_files:
-        dst = os.path.join(static_dir, filename)
-        content = _load_asset(filename)
-        content = _apply_variables(content, variables)
-        with open(dst, 'w', encoding='utf-8') as f:
-            f.write(content)
