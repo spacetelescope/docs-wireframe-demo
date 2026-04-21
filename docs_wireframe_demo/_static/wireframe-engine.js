@@ -369,6 +369,12 @@ function initializeWireframeEngine(container) {
                 }
                 return el;
 
+            case 'toggle-class':
+                if (value) {
+                    el.classList.toggle(value);
+                }
+                return noHighlight ? null : el;
+
             default:
                 return el;
         }

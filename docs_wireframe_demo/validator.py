@@ -29,7 +29,7 @@ def validate_wireframe_sequence(sequence_str, option_name, docname, lineno, logg
     # validated at runtime against the DOM.
     valid_actions = {
         'show', 'open-panel', 'select-tab', 'select-dropdown',
-        'click-button', 'open-data-menu', 'highlight',
+        'click-button', 'open-data-menu', 'highlight', 'toggle-class',
     }
 
     items = [s.strip() for s in sequence_str.split(',')]
