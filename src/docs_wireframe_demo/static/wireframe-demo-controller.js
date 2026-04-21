@@ -608,6 +608,15 @@
         _customActions[name] = handler;
     };
 
+    // ── Export ───────────────────────────────────────────────────────────
+
+    root.WireframeDemo = WireframeDemo;
+
+    // Signal that WireframeDemo is available for action registration.
+    // Scripts loaded before the controller (e.g. directive :js: files) can
+    // listen for this event to register custom actions before auto-discover.
+    document.dispatchEvent(new CustomEvent('wireframe-demo-ready'));
+
     // ── Auto-discovery ──────────────────────────────────────────────────
 
     function autoDiscover() {
@@ -633,9 +642,5 @@
         autoDiscover();
     }
     document.addEventListener('wireframe-demo-loaded', autoDiscover);
-
-    // ── Export ───────────────────────────────────────────────────────────
-
-    root.WireframeDemo = WireframeDemo;
 
 })(typeof window !== 'undefined' ? window : this);
