@@ -130,11 +130,12 @@ class WireframeDemoDirective(SphinxDirective):
             error_node += nodes.paragraph(text=f'Error loading wireframe components: {e}')
             return [error_node]
 
-        # Fix relative paths in CSS for inline embedding.
+        # Fix relative asset paths in CSS for inline embedding (only when referenced).
         docname = self.env.docname
         depth = docname.count('/')
         static_prefix = ('../' * depth + '_static/') if depth > 0 else '_static/'
-        css_content = css_content.replace("url('api.svg')", f"url('{static_prefix}api.svg')")
+        if "url('api.svg')" in css_content:
+            css_content = css_content.replace("url('api.svg')", f"url('{static_prefix}api.svg')")
 
         # Build per-directive variables (global wireframe_variables + directive-local overrides)
         variables = dict(self.env.app.config.wireframe_variables)

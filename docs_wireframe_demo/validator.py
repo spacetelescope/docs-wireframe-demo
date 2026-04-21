@@ -18,26 +18,18 @@ def validate_wireframe_sequence(sequence_str, option_name, docname, lineno, logg
     if not sequence_str:
         return
 
-    # Known sidebar types
-    valid_sidebars = {'loaders', 'save', 'settings', 'info', 'plugins', 'subsets', 'pause'}
-
-    # Known viewer actions
+    # Known viewer actions (generic; not app-specific)
     valid_viewer_actions = {
         'viewer-add', 'viewer-image', 'viewer-legend', 'viewer-focus',
         'viewer-remove', 'viewer-open-data-menu', 'viewer-tool-toggle'
     }
 
-    # Known sidebar actions
+    # Known generic sidebar actions
+    # Sidebar names themselves are NOT validated here — they are app-defined and
+    # validated at runtime against the DOM.
     valid_actions = {
-        'show', 'open-panel', 'select-tab', 'select-dropdown', 'select-data',
-        'select-aperture', 'click-button', 'api-toggle', 'open-data-menu',
-        'highlight', 'select-viewer', 'select-layer', 'set-color'
-    }
-
-    # Known tool names for viewer-tool-toggle
-    valid_tools = {
-        'home', 'panzoom', 'pan-zoom', 'pan_zoom', 'rectroi', 'rect-roi',
-        'rect_roi', 'rectangle', 'circroi', 'circ-roi', 'circ_roi', 'circle', 'subset'
+        'show', 'open-panel', 'select-tab', 'select-dropdown',
+        'click-button', 'open-data-menu', 'highlight',
     }
 
     items = [s.strip() for s in sequence_str.split(',')]
@@ -101,38 +93,19 @@ def validate_wireframe_sequence(sequence_str, option_name, docname, lineno, logg
                     f"(:{option_name}:). Valid viewer actions: {sorted(valid_viewer_actions)}",
                     location=(docname, lineno)
                 )
-            else:
-                # Validate viewer-tool-toggle tool name
-                if sidebar == 'viewer-tool-toggle' and action_part:
-                    params = action_part.split(':')
-                    if len(params) >= 2:
-                        tool_name = params[1].lower()
-                        if tool_name not in valid_tools:
-                            logger.warning(
-                                f"wireframe-demo: Unknown tool '{params[1]}' in '{item}' "
-                                f"(:{option_name}:). Valid tools: {sorted(valid_tools)}",
-                                location=(docname, lineno)
-                            )
         elif sidebar == 'pause':
             # pause is valid, no action needed
             pass
-        elif sidebar not in valid_sidebars and not sidebar.startswith(':'):
-            if sidebar:
-                logger.warning(
-                    f"wireframe-demo: Unknown sidebar '{sidebar}' in '{item}' "
-                    f"(:{option_name}:). Valid sidebars: {sorted(valid_sidebars)}",
-                    location=(docname, lineno)
-                )
 
-        # Validate action if present
-        if action_part and sidebar in valid_sidebars:
+        # Validate action if present (sidebar names are app-defined; only actions validated)
+        if action_part:
             # Extract action name (before = if present)
             if '=' in action_part:
                 action_name = action_part[:action_part.index('=')]
             else:
                 action_name = action_part
 
-            if action_name not in valid_actions:
+            if action_name not in valid_actions and not sidebar.startswith('viewer-'):
                 logger.warning(
                     f"wireframe-demo: Unknown action '{action_name}' in '{item}' "
                     f"(:{option_name}:). Valid actions: {sorted(valid_actions)}",

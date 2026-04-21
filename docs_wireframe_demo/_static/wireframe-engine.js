@@ -163,7 +163,7 @@ function initializeWireframeEngine(container) {
     var initialSequence = parseSequence(initialState);
     var sidebarOrder    = (demoSequence.length > 0)
         ? demoSequence.map(function(s) { return s.sidebar; }).filter(Boolean)
-        : ['loaders', 'save', 'settings', 'info', 'plugins', 'subsets'];
+        : Array.from(container.querySelectorAll('[data-sidebar-panel]')).map(function(p) { return p.dataset.sidebarPanel; });
 
     // ── Helpers ───────────────────────────────────────────────────────────────
     function briefHighlight(element, stepDelay) {
@@ -488,8 +488,8 @@ function initializeWireframeEngine(container) {
         var toolMap = {
             'home':      VIEWER_TOOLBAR_ICONS.home,
             'panzoom':   VIEWER_TOOLBAR_ICONS.panZoom, 'pan-zoom': VIEWER_TOOLBAR_ICONS.panZoom, 'pan_zoom': VIEWER_TOOLBAR_ICONS.panZoom,
-            'rectroi':   VIEWER_TOOLBAR_ICONS.rectROI, 'rect-roi': VIEWER_TOOLBAR_ICONS.rectROI, 'rect_roi': VIEWER_TOOLBAR_ICONS.rectROI, 'rectangle': VIEWER_TOOLBAR_ICONS.rectROI,
-            'circroi':   VIEWER_TOOLBAR_ICONS.circROI, 'circ-roi': VIEWER_TOOLBAR_ICONS.circROI, 'circ_roi': VIEWER_TOOLBAR_ICONS.circROI, 'circle':    VIEWER_TOOLBAR_ICONS.circROI, 'subset': VIEWER_TOOLBAR_ICONS.circROI
+            'rectangle': VIEWER_TOOLBAR_ICONS.rectROI,
+            'circle':    VIEWER_TOOLBAR_ICONS.circROI
         };
         var viewer = container.querySelector('.wireframe-viewer[data-viewer-id="' + viewerId + '"]')
                   || container.querySelector('.wireframe-viewer');
@@ -828,7 +828,8 @@ function initializeWireframeEngine(container) {
             if (e.isTrusted) stopAutoCycle();
 
             if (icon.classList.contains('mouseover-button')) {
-                var targetEl = document.querySelector('[data-grid-id="grid-mouseover"]');
+                var scrollTarget = icon.dataset.scrollTarget;
+                var targetEl = scrollTarget ? document.querySelector('[data-grid-id="' + scrollTarget + '"]') : null;
                 if (targetEl) {
                     targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
                     setTimeout(function() {

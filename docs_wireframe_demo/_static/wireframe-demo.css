@@ -1,29 +1,30 @@
 /* CSS Variables for wireframe styling */
+/* Default (dark) theme — app can override all values via its own CSS */
 :root,
 html[data-theme="dark"] {
     --text-color: #ffffff;
-    --wireframe-bg: #003B4D;
+    --wireframe-bg: #1a2633;
     --wireframe-border: rgba(255, 255, 255, 0.3);
-    --sidebar-bg: rgba(0, 97, 126, 0.4);
-    --sidebar-hover: rgba(0, 125, 164, 0.6);
-    --sidebar-active: #007DA4;
-    --tab-content-bg: rgba(0, 97, 126, 0.3);
-    --button-primary: #007DA4;
-    --button-hover: #C75109;
+    --sidebar-bg: rgba(255, 255, 255, 0.08);
+    --sidebar-hover: rgba(255, 255, 255, 0.15);
+    --sidebar-active: #3a8fb5;
+    --tab-content-bg: rgba(255, 255, 255, 0.06);
+    --button-primary: #3a8fb5;
+    --button-hover: #e07b39;
     --grid-border: rgba(255, 255, 255, 0.3);
 }
 
 html[data-theme="light"] {
     --text-color: #1a1a1a;
     --wireframe-bg: #ffffff;
-    --wireframe-border: rgba(0, 59, 77, 0.2);
-    --sidebar-bg: rgba(0, 125, 164, 0.15);
-    --sidebar-hover: rgba(0, 125, 164, 0.25);
-    --sidebar-active: #007DA4;
-    --tab-content-bg: rgba(0, 125, 164, 0.1);
-    --button-primary: #007DA4;
-    --button-hover: #C75109;
-    --grid-border: rgba(0, 97, 126, 0.3);
+    --wireframe-border: rgba(0, 0, 0, 0.15);
+    --sidebar-bg: rgba(0, 0, 0, 0.05);
+    --sidebar-hover: rgba(0, 0, 0, 0.1);
+    --sidebar-active: #3a8fb5;
+    --tab-content-bg: rgba(0, 0, 0, 0.04);
+    --button-primary: #3a8fb5;
+    --button-hover: #e07b39;
+    --grid-border: rgba(0, 0, 0, 0.15);
 }
 
 /* Wireframe Section */
@@ -113,7 +114,7 @@ html[data-theme="light"] {
 }
 
 .wireframe-toolbar {
-    background: #003B4D;
+    background: var(--wireframe-bg);
     padding: 0;
     display: flex;
     align-items: stretch;
@@ -208,85 +209,6 @@ html[data-theme="light"] {
     min-width: 200px;
 }
 
-.wireframe-toolbar-search-row {
-    display: flex;
-    align-items: center;
-}
-
-.wireframe-toolbar-search {
-    flex: 1;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    padding: 4px 8px;
-    color: #ffffff;
-    font-size: 13px;
-    outline: none;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.wireframe-toolbar-search:hover {
-    background: rgba(255, 255, 255, 0.15);
-    border-color: rgba(255, 255, 255, 0.3);
-}
-
-.wireframe-toolbar-search::placeholder {
-    color: rgba(255, 255, 255, 0.6);
-}
-
-.wireframe-toolbar-version-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    justify-content: flex-end;
-}
-
-.wireframe-toolbar-version {
-    color: rgba(255, 255, 255, 0.7);
-    font-size: 12px;
-    font-weight: 600;
-    white-space: nowrap;
-}
-
-.wireframe-toolbar-right .api-button {
-    width: 32px;
-    height: 28px;
-    padding: 0;
-    background-color: transparent;
-    background-image: none;
-    border: none;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    overflow: hidden;
-}
-
-.wireframe-toolbar-right .api-button::before {
-    content: '';
-    display: block;
-    width: 26px;
-    height: 22px;
-    margin-left: 3px;
-    margin-top: 2px;
-    flex-shrink: 0;
-    background-image: url('api.svg');
-    background-size: contain;
-    background-position: center;
-    background-repeat: no-repeat;
-    filter: brightness(0) saturate(100%) invert(100%);
-}
-
-.wireframe-toolbar-right .api-button:hover {
-    background-color: rgba(0, 125, 164, 0.3);
-}
-
-.wireframe-toolbar-right .api-button.active {
-    background-color: var(--button-hover);
-}
-
 .wireframe-main {
     display: flex;
     height: 400px;
@@ -358,7 +280,7 @@ html[data-theme="light"] {
 }
 
 .viewer-toolbar {
-    background: #205f76;
+    background: var(--sidebar-active);
     padding: 0;
     height: 42px;
     display: flex;
@@ -385,7 +307,7 @@ html[data-theme="light"] {
 }
 
 .viewer-toolbar-icon.active {
-    background-color: #c75109 !important;
+    background-color: var(--button-hover) !important;
 }
 
 .viewer-toolbar-spacer {
@@ -517,7 +439,7 @@ html[data-theme="light"] {
 
 .data-menu-header {
     padding: 16px;
-    background: #003B4D;
+    background: var(--wireframe-bg);
     border-bottom: 2px solid var(--wireframe-border);
     display: flex;
     align-items: center;
@@ -560,19 +482,6 @@ html[data-theme="light"] {
     font-weight: 100;
     line-height: 1.6;
     margin-bottom: 16px;
-}
-
-.data-menu-api-snippet {
-    margin: 16px 0;
-    display: none;
-}
-
-.wireframe-container.api-mode-active .data-menu-api-snippet {
-    display: block !important;
-}
-
-.data-menu-api-snippet .api-snippet {
-    margin: 0;
 }
 
 .data-menu-button {
@@ -671,7 +580,7 @@ html[data-theme="light"] {
 .wireframe-sidebar-tabs {
     display: flex;
     gap: 0;
-    background: #00617E;
+    background: var(--sidebar-active);
     border-bottom: 2px solid var(--wireframe-border);
     flex-shrink: 0;
 }
@@ -754,331 +663,6 @@ html[data-theme="light"] {
     text-align: center;
     opacity: 0.5;
     cursor: not-allowed;
-}
-
-/* API Snippet Styles */
-.api-snippet {
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--grid-border);
-    padding: 12px;
-    margin: 8px 0 12px 0;
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 13px;
-    color: #ffffff;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    line-height: 1.5;
-}
-
-html[data-theme="light"] .api-snippet {
-    background: rgba(0, 97, 126, 0.1);
-    color: #1a1a1a;
-}
-
-.api-learn-more {
-    display: block;
-    background: var(--sidebar-active);
-    color: #ffffff !important;
-    text-decoration: none;
-    padding: 10px 16px;
-    font-size: 14px;
-    font-weight: 700;
-    transition: all 0.3s ease;
-    border: 1px solid var(--grid-border);
-    text-align: center;
-    margin-top: 20px;
-    cursor: pointer;
-    font-family: inherit;
-    width: 100%;
-}
-
-html[data-theme="light"] .api-learn-more {
-    color: #ffffff !important;
-}
-
-.api-learn-more:hover {
-    background: var(--button-hover);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-}
-
-/* Hide API snippets by default */
-.api-snippet-container {
-    display: none;
-}
-
-/* Show API snippets when API mode is active */
-.wireframe-container.api-mode-active .api-snippet-container {
-    display: block !important;
-}
-
-/* Viewer Toolbar Icon Styles */
-.viewer-toolbar-icon[data-icon="bqplot:home"] {
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="white" d="M10,20V14H14V20H19V12H22L12,3L2,12H5V20H10Z" /></svg>');
-}
-
-.viewer-toolbar-icon[data-icon="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4KPCEtLSBHZW5lcmF0b3I6IEFkb2JlIElsbHVzdHJhdG9yIDI3LjUuMCwgU1ZHIEV4cG9ydCBQbHVnLUluIC4gU1ZHIFZlcnNpb246IDYuMDAgQnVpbGQgMCkgIC0tPgo8c3ZnIHZlcnNpb249IjEuMSIgaWQ9IkxheWVyXzEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHg9IjBweCIgeT0iMHB4IgoJIHZpZXdCb3g9IjAgMCAyMi45IDIzIiBzdHlsZT0iZW5hYmxlLWJhY2tncm91bmQ6bmV3IDAgMCAyMi45IDIzOyIgeG1sOnNwYWNlPSJwcmVzZXJ2ZSI+CjxzdHlsZSB0eXBlPSJ0ZXh0L2NzcyI+Cgkuc3Qwe2ZpbGw6IzAxMDEwMTt9Cjwvc3R5bGU+Cjxwb2x5Z29uIGNsYXNzPSJzdDAiIHBvaW50cz0iMjAuMSwxMy4xIDIxLDEzLjEgMjEsMS45IDkuOSwxLjkgOS45LDMuMyA3LjksMy4zIDcuOSwwIDIyLjksMCAyMi45LDE1LjEgMjAuMSwxNS4xICIvPgo8cGF0aCBjbGFzcz0ic3QwIiBkPSJNMCwyMS4xTDEuOSwyM2w1LjgtNS43di0wLjZsMC44LTAuOGMxLjIsMC45LDIuNiwxLjMsNCwxLjNjMy43LDAsNi43LTMsNi43LTYuN3MtMy02LjctNi43LTYuN3MtNi43LDMtNi43LDYuNwoJYzAsMS40LDAuNSwyLjgsMS4zLDRsLTAuOCwwLjhINS44TDAsMjEuMXogTTEyLjQsMTUuMmMtMi42LDAtNC43LTIuMS00LjctNC43bDAsMGMwLTIuNiwyLjEtNC43LDQuNy00LjdjMi42LDAsNC43LDIuMSw0LjcsNC43CglTMTUsMTUuMiwxMi40LDE1LjJDMTIuNCwxNS4yLDEyLjQsMTUuMiwxMi40LDE1LjJ6Ii8+Cjwvc3ZnPgo="] {
-    background-image: url("data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4KPCEtLSBHZW5lcmF0b3I6IEFkb2JlIElsbHVzdHJhdG9yIDI3LjUuMCwgU1ZHIEV4cG9ydCBQbHVnLUluIC4gU1ZHIFZlcnNpb246IDYuMDAgQnVpbGQgMCkgIC0tPgo8c3ZnIHZlcnNpb249IjEuMSIgaWQ9IkxheWVyXzEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHg9IjBweCIgeT0iMHB4IgoJIHZpZXdCb3g9IjAgMCAyMi45IDIzIiBzdHlsZT0iZW5hYmxlLWJhY2tncm91bmQ6bmV3IDAgMCAyMi45IDIzOyIgeG1sOnNwYWNlPSJwcmVzZXJ2ZSI+CjxzdHlsZSB0eXBlPSJ0ZXh0L2NzcyI+Cgkuc3Qwe2ZpbGw6I0ZGRkZGRjt9Cjwvc3R5bGU+Cjxwb2x5Z29uIGNsYXNzPSJzdDAiIHBvaW50cz0iMjAuMSwxMy4xIDIxLDEzLjEgMjEsMS45IDkuOSwxLjkgOS45LDMuMyA3LjksMy4zIDcuOSwwIDIyLjksMCAyMi45LDE1LjEgMjAuMSwxNS4xICIvPgo8cGF0aCBjbGFzcz0ic3QwIiBkPSJNMCwyMS4xTDEuOSwyM2w1LjgtNS43di0wLjZsMC44LTAuOGMxLjIsMC45LDIuNiwxLjMsNCwxLjNjMy43LDAsNi43LTMsNi43LTYuN3MtMy02LjctNi43LTYuN3MtNi43LDMtNi43LDYuNwoJYzAsMS40LDAuNSwyLjgsMS4zLDRsLTAuOCwwLjhINS44TDAsMjEuMXogTTEyLjQsMTUuMmMtMi42LDAtNC43LTIuMS00LjctNC43bDAsMGMwLTIuNiwyLjEtNC43LDQuNy00LjdjMi42LDAsNC43LDIuMSw0LjcsNC43CglTMTUsMTUuMiwxMi40LDE1LjJDMTIuNCwxNS4yLDEyLjQsMTUuMiwxMi40LDE1LjJ6Ii8+Cjwvc3ZnPgo=");
-}
-
-.viewer-toolbar-icon[data-icon="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNS40NiAyNS40NiI+PGRlZnM+PHN0eWxlPi5jbHMtMXtmaWxsOiMwMTAxMDE7fTwvc3R5bGU+PC9kZWZzPjx0aXRsZT52aXogbG9nb3MgW1JlY292ZXJlZF08L3RpdGxlPjxwb2x5bGluZSBjbGFzcz0iY2xzLTEiIHBvaW50cz0iMTEuNjcgMTMuNzMgMTEuNjcgMjEuNjMgMTAuMTMgMjAuMDkgOC43MiAyMS41MSAxMi42NyAyNS40NiAxNi42MiAyMS41MSAxNS4yMSAyMC4wOSAxMy42NyAyMS42MyAxMy42NyAxMy43MyIvPjxwb2x5bGluZSBjbGFzcz0iY2xzLTEiIHBvaW50cz0iMTMuNjcgMTMuNzMgMTMuNjcgMy44MyAxNS4yMSA1LjM2IDE2LjYyIDMuOTUgMTIuNjcgMCA4LjcyIDMuOTUgMTAuMTMgNS4zNiAxMS42NyAzLjgzIDExLjY3IDEzLjczIi8+PC9zdmc+"] {
-    background-image: url("data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNS40NiAyNS40NiI+PGRlZnM+PHN0eWxlPi5jbHMtMXtmaWxsOiNGRkZGRkY7fTwvc3R5bGU+PC9kZWZzPjx0aXRsZT52aXogbG9nb3MgW1JlY292ZXJlZF08L3RpdGxlPjxwb2x5bGluZSBjbGFzcz0iY2xzLTEiIHBvaW50cz0iMTEuNjcgMTMuNzMgMTEuNjcgMjEuNjMgMTAuMTMgMjAuMDkgOC43MiAyMS41MSAxMi42NyAyNS40NiAxNi42MiAyMS41MSAxNS4yMSAyMC4wOSAxMy42NyAyMS42MyAxMy42NyAxMy43MyIvPjxwb2x5bGluZSBjbGFzcz0iY2xzLTEiIHBvaW50cz0iMTMuNjcgMTMuNzMgMTMuNjcgMy44MyAxNS4yMSA1LjM2IDE2LjYyIDMuOTUgMTIuNjcgMCA4LjcyIDMuOTUgMTAuMTMgNS4zNiAxMS42NyAzLjgzIDExLjY3IDEzLjczIi8+PC9zdmc+");
-}
-
-.viewer-toolbar-icon[data-icon="data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMi43NiAyNCI+PGRlZnM+PHN0eWxlPi5jbHMtMXtmaWxsOiMyMzFmMjA7fTwvc3R5bGU+PC9kZWZzPjxyZWN0IGNsYXNzPSJjbHMtMSIgeD0iMS45NiIgeT0iMTYuMTUiIHdpZHRoPSIyLjk2IiBoZWlnaHQ9IjIuOTYiIHJ4PSIxLjQ4Ii8+PHJlY3QgY2xhc3M9ImNscy0xIiB4PSIxOCIgeT0iMTEuNzciIHdpZHRoPSIyLjk2IiBoZWlnaHQ9IjIuOTYiIHJ4PSIxLjQ4Ii8+PHBhdGggY2xhc3M9ImNscy0xIiBkPSJNNy4zMywwVjI0aDguMzNWMFptNC4yMiwxMGgwYTEuNDgsMS40OCwwLDAsMS0xLjQ4LTEuNDhoMEExLjQ4LDEuNDgsMCwwLDEsMTEuNTUsN2gwQTEuNDgsMS40OCwwLDAsMSwxMyw4LjUyaDBBMS40OCwxLjQ4LDAsMCwxLDExLjU1LDEwWiIvPjwvc3ZnPg=="] {
-    background-image: url("data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMi43NiAyNCI+PGRlZnM+PHN0eWxlPi5jbHMtMXtmaWxsOiNGRkZGRkY7fTwvc3R5bGU+PC9kZWZzPjxyZWN0IGNsYXNzPSJjbHMtMSIgeD0iMS45NiIgeT0iMTYuMTUiIHdpZHRoPSIyLjk2IiBoZWlnaHQ9IjIuOTYiIHJ4PSIxLjQ4Ii8+PHJlY3QgY2xhc3M9ImNscy0xIiB4PSIxOCIgeT0iMTEuNzciIHdpZHRoPSIyLjk2IiBoZWlnaHQ9IjIuOTYiIHJ4PSIxLjQ4Ii8+PHBhdGggY2xhc3M9ImNscy0xIiBkPSJNNy4zMywwVjI0aDguMzNWMFptNC4yMiwxMGgwYTEuNDgsMS40OCwwLDAsMS0xLjQ4LTEuNDhoMEExLjQ4LDEuNDgsMCwwLDEsMTEuNTUsN2gwQTEuNDgsMS40OCwwLDAsMSwxMyw4LjUyaDBBMS40OCwxLjQ4LDAsMCwxLDExLjU1LDEwWiIvPjwvc3ZnPg==");
-}
-
-.legend-icon[data-icon="chart-box-outline"] {
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="white" d="M9,17H7V10H9V17M13,17H11V7H13V17M17,17H15V13H17V17M19,19H5V5H19V19.1M19,3H5C3.9,3 3,3.9 3,5V19C3,20.1 3.9,21 5,21H19C20.1,21 21,20.1 21,19V5C21,3.9 20.1,3 19,3Z" /></svg>');
-}
-
-/* Jupyter Cell Section */
-.jupyter-cell-section {
-    width: 90%;
-    max-width: 1000px;
-    margin: 40px auto;
-    padding: 0;
-}
-
-.jupyter-cell-container {
-    width: 90%;
-    max-width: 1000px;
-    margin: 0 auto;
-    background: var(--sidebar-bg);
-    border: 1px solid var(--grid-border);
-    overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.jupyter-cell-header {
-    display: flex;
-    align-items: center;
-    padding: 8px 12px;
-    background: rgba(0, 59, 77, 0.3);
-    border-bottom: 1px solid var(--grid-border);
-    gap: 8px;
-}
-
-.jupyter-cell-prompt {
-    color: rgba(255, 255, 255, 0.6);
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 13px;
-    font-weight: 600;
-    min-width: 60px;
-}
-
-.jupyter-cell-code {
-    background: rgba(0, 0, 0, 0.3);
-    padding: 16px;
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 14px;
-    color: #ffffff;
-    line-height: 1.6;
-    white-space: pre;
-}
-
-.jupyter-api-snippet {
-    display: none;
-}
-
-.jupyter-api-snippet.visible {
-    display: block;
-}
-
-/* Light theme - Improve jupyter-cell contrast */
-html[data-theme="light"] .jupyter-cell-container {
-    background: #e8e8e8;
-}
-
-html[data-theme="light"] .jupyter-cell-header {
-    background: #a0a0a0;
-    color: #1a1a1a;
-}
-
-html[data-theme="light"] .jupyter-cell-prompt {
-    color: #1a1a1a;
-    opacity: 0.7;
-}
-
-html[data-theme="light"] .jupyter-cell-code {
-    background: #f5f5f5;
-    color: #1a1a1a;
-}
-
-html[data-theme="light"] .wireframe-sidebar-tab {
-    color: #ffffff;
-}
-
-html[data-theme="light"] .wireframe-sidebar-tab.active {
-    color: #ffffff;
-}
-
-html[data-theme="light"] .wireframe-sidebar-footer-button {
-    color: #ffffff !important;
-}
-
-html[data-theme="light"] .wireframe-sidebar-footer-button:hover {
-    color: #ffffff !important;
-}
-
-html[data-theme="light"] .wireframe-cycle-control::after {
-    color: #1a1a1a;
-}
-
-html[data-theme="light"] .plot-options-section-header {
-    color: rgba(26, 26, 26, 0.6);
-    border-bottom: 1px solid rgba(26, 26, 26, 0.1);
-}
-
-html[data-theme="light"] .plot-options-viewer-select label {
-    color: rgba(26, 26, 26, 0.7);
-}
-
-html[data-theme="light"] .plot-options-empty-message {
-    color: rgba(26, 26, 26, 0.5) !important;
-}
-
-.jupyter-api-snippet-header {
-    display: flex;
-    align-items: center;
-    padding: 8px 12px;
-    background: rgba(0, 59, 77, 0.3);
-    border-top: 1px solid var(--grid-border);
-    border-bottom: 1px solid var(--grid-border);
-    gap: 8px;
-}
-
-.jupyter-api-snippet-prompt {
-    color: rgba(255, 255, 255, 0.6);
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 13px;
-    font-weight: 600;
-    min-width: 60px;
-}
-
-.jupyter-api-snippet-code {
-    background: rgba(0, 0, 0, 0.3);
-    padding: 16px;
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 14px;
-    color: #ffffff;
-    line-height: 1.6;
-    white-space: pre-wrap;
-}
-
-/* Plot Options UI */
-.plot-options-viewer-select {
-    margin-bottom: 16px;
-}
-
-.plot-options-viewer-select label {
-    display: block;
-    font-size: 12px;
-    color: rgba(255, 255, 255, 0.7);
-    margin-bottom: 4px;
-}
-
-.plot-options-viewer-dropdown {
-    width: 100%;
-    padding: 8px 12px;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    color: white;
-    font-size: 14px;
-    cursor: pointer;
-}
-
-.plot-options-viewer-dropdown:hover {
-    border-color: rgba(255, 255, 255, 0.4);
-}
-
-.plot-options-layer-tabs {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 16px;
-    flex-wrap: wrap;
-}
-
-.plot-options-layer-tab {
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    color: white;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.plot-options-layer-tab:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.4);
-}
-
-.plot-options-layer-tab.active {
-    background: var(--accent-color, #00617E);
-    border-color: var(--accent-color, #00617E);
-}
-
-.plot-options-color-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 16px;
-    padding: 8px 0;
-}
-
-.plot-options-color-label {
-    font-size: 14px;
-    color: var(--text-color);
-    flex: 1;
-}
-
-.plot-options-color-button {
-    width: 32px;
-    height: 32px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    cursor: pointer;
-    transition: border-color 0.2s ease;
-}
-
-.plot-options-color-button:hover {
-    border-color: rgba(255, 255, 255, 0.6);
-}
-
-.plot-options-input-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 12px;
-}
-
-.plot-options-input-label {
-    font-size: 14px;
-    color: var(--text-color);
-    min-width: 80px;
-}
-
-.plot-options-input-bar {
-    flex: 1;
-    height: 8px;
-    background: rgba(128, 128, 128, 0.3);
-}
-
-.plot-options-section-header {
-    font-size: 12px;
-    font-weight: 600;
-    color: rgba(255, 255, 255, 0.6);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin: 16px 0 8px 0;
-    padding-bottom: 4px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 /* Expansion Panels */
