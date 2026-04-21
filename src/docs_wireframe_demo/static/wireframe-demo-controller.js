@@ -304,6 +304,8 @@
             })
             .then(function (html) {
                 self._contentRoot.innerHTML = html;
+                // Save the initial HTML for restart resets
+                self._initialHTML = html;
                 // Dispatch event so external code can react
                 document.dispatchEvent(new CustomEvent('wireframe-demo-loaded', {
                     detail: { container: self.container, instance: self }
@@ -368,6 +370,18 @@
         this.pause();
         this._clearHighlights();
         this._stepIndex = 0;
+
+        // Restore the content DOM to its initial state so the demo
+        // starts fresh (removes dynamically added viewers, sidebars, etc.)
+        if (this._initialHTML !== undefined) {
+            this._contentRoot.innerHTML = this._initialHTML;
+            // Re-dispatch so external code (e.g. jdaviz-wireframe-actions)
+            // can re-wire toolbar clicks, icons, etc.
+            document.dispatchEvent(new CustomEvent('wireframe-demo-loaded', {
+                detail: { container: this.container, instance: this }
+            }));
+        }
+
         this.play();
     };
 
@@ -440,6 +454,15 @@
         if (this.config.repeat) {
             var self = this;
             this._stepIndex = 0;
+
+            // Restore the content DOM to its initial state before replaying
+            if (this._initialHTML !== undefined) {
+                this._contentRoot.innerHTML = this._initialHTML;
+                document.dispatchEvent(new CustomEvent('wireframe-demo-loaded', {
+                    detail: { container: this.container, instance: this }
+                }));
+            }
+
             this._timer = setTimeout(function () {
                 self._timer = null;
                 self._runStep();
