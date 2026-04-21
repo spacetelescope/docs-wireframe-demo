@@ -65,9 +65,25 @@ class WireframeDemoDirective(SphinxDirective):
     def run(self):
         html_path = self.arguments[0]
 
+        # Compute relative path prefix to _static/ based on document depth.
+        # A page at "plugins/gaussian_smooth" is 1 level deep → "../_static/"
+        # A page at "loaders/sources/file" is 2 levels deep → "../../_static/"
+        # A page at "index" is 0 levels deep → "_static/"
+        depth = self.env.docname.count('/')
+        static_prefix = '../' * depth + '_static/'
+
+        def resolve_static_path(p):
+            """Resolve a path that may reference a _static/ file."""
+            if p.startswith('_static/'):
+                return static_prefix + p[len('_static/'):]
+            if '/' not in p:
+                # Bare filename — assume it lives in _static/
+                return static_prefix + p
+            return p
+
         # Build config object
         config = {}
-        config['htmlSrc'] = html_path
+        config['htmlSrc'] = resolve_static_path(html_path)
 
         # Steps: either shorthand strings or JSON
         steps_str = self.options.get('steps')
@@ -98,25 +114,23 @@ class WireframeDemoDirective(SphinxDirective):
         # Height
         height = self.options.get('height', '')
 
-        # Resolve HTML path relative to the RST source dir
-        # The directive argument is used as-is in the fetch() call at runtime,
-        # so it must be a path that will be valid relative to the built page.
-        # Typically this means the file lives in _static/.
         config_json = json.dumps(config)
         config_escaped = html_module.escape(config_json)
 
         style_attr = f' style="height:{height}"' if height else ''
 
-        # Additional CSS/JS
+        # Additional CSS/JS — resolve paths relative to _static/
         extra_css = ''
         css_path = self.options.get('css')
         if css_path:
-            extra_css = f'<link rel="stylesheet" href="{html_module.escape(css_path)}">'
+            resolved_css = resolve_static_path(css_path)
+            extra_css = f'<link rel="stylesheet" href="{html_module.escape(resolved_css)}">'
 
         extra_js = ''
         js_path = self.options.get('js')
         if js_path:
-            extra_js = f'<script src="{html_module.escape(js_path)}"></script>'
+            resolved_js = resolve_static_path(js_path)
+            extra_js = f'<script src="{html_module.escape(resolved_js)}"></script>'
 
         raw_html = f"""\
 {extra_css}
