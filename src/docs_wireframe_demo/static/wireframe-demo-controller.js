@@ -449,6 +449,7 @@
         var value = step.value;
 
         // Check custom actions first
+        console.log('[WireframeDemo DEBUG] _executeAction: ' + action + ', registered actions: ' + Object.keys(_customActions).join(','));
         if (_customActions[action]) {
             _customActions[action].call(this, step, el, this._contentRoot);
             return;
@@ -605,17 +606,20 @@
      * @param {Function} handler Called as handler.call(instance, step, el, contentRoot)
      */
     WireframeDemo.registerAction = function (name, handler) {
+        console.log('[WireframeDemo DEBUG] registerAction called: ' + name);
         _customActions[name] = handler;
     };
 
     // ── Export ───────────────────────────────────────────────────────────
 
     root.WireframeDemo = WireframeDemo;
+    console.log('[WireframeDemo DEBUG] Exported to window, dispatching wireframe-demo-ready');
 
     // Signal that WireframeDemo is available for action registration.
     // Scripts loaded before the controller (e.g. directive :js: files) can
     // listen for this event to register custom actions before auto-discover.
     document.dispatchEvent(new CustomEvent('wireframe-demo-ready'));
+    console.log('[WireframeDemo DEBUG] After wireframe-demo-ready, registered actions: ' + Object.keys(_customActions).join(','));
 
     // ── Auto-discovery ──────────────────────────────────────────────────
 
@@ -636,9 +640,14 @@
     }
 
     // Run auto-discovery on DOMContentLoaded and on the custom event
+    console.log('[WireframeDemo DEBUG] readyState: ' + document.readyState);
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', autoDiscover);
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('[WireframeDemo DEBUG] DOMContentLoaded autoDiscover, registered actions: ' + Object.keys(_customActions).join(','));
+            autoDiscover();
+        });
     } else {
+        console.log('[WireframeDemo DEBUG] Immediate autoDiscover, registered actions: ' + Object.keys(_customActions).join(','));
         autoDiscover();
     }
     document.addEventListener('wireframe-demo-loaded', autoDiscover);
