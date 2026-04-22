@@ -11,11 +11,15 @@ license = "BSD-3-Clause"
 requires-python = ">=3.9"
 dependencies = [
     "sphinx>=5.0",
+    "beautifulsoup4>=4.12",
 ]
 
 [project.optional-dependencies]
 docs = [
     "pydata-sphinx-theme",
+]
+renderer = [
+    "playwright>=1.40",
 ]
 
 [tool.hatch.build.targets.wheel]

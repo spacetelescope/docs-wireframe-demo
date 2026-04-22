@@ -30,6 +30,15 @@ WIREFRAMES_DIR = EXAMPLES / "wireframes"
 DEMOS_DIR = EXAMPLES / "demos"
 STATIC_DIR = ROOT / "src" / "docs_wireframe_demo" / "static"
 
+# Make the package importable so we can reuse the sanitizer / renderer
+sys.path.insert(0, str(ROOT / "src"))
+from docs_wireframe_demo.renderer import fetch_rendered_and_sanitize
+
+
+def _is_url(value: str) -> bool:
+    """Return True if the value looks like an HTTP(S) URL."""
+    return value.startswith(("http://", "https://"))
+
 
 def extract_body_and_styles(wireframe_html: str) -> tuple[str, str]:
     """Extract <style> blocks and <body> content from a wireframe HTML file.
@@ -109,6 +118,89 @@ def build_page(demo_config: dict, wireframe_path: Path, controller_js: str, cont
 """
 
 
+def _build_config(demo_config: dict) -> dict:
+    """Extract the runtime config object from a demo config (shared by both builders)."""
+    config = {
+        "steps": demo_config.get("steps", []),
+        "repeat": demo_config.get("repeat", True),
+        "autoStart": demo_config.get("autoStart", True),
+    }
+    if demo_config.get("pauseOnInteraction") is not None:
+        config["pauseOnInteraction"] = demo_config["pauseOnInteraction"]
+    if demo_config.get("initialClass"):
+        config["initialClass"] = demo_config["initialClass"]
+    if demo_config.get("cursor") is not None:
+        config["cursor"] = demo_config["cursor"]
+    if demo_config.get("cursorSpeed") is not None:
+        config["cursorSpeed"] = demo_config["cursorSpeed"]
+    return config
+
+
+def build_page_from_url(
+    demo_config: dict, url: str, controller_js: str, controls_css: str
+) -> str:
+    """Build a self-contained HTML page with sanitized remote content in an iframe srcdoc."""
+    print(f"  Fetching and sanitizing {url} (via headless browser)...")
+    sanitized_html = fetch_rendered_and_sanitize(url)
+
+    title = demo_config.get("title", "Wireframe Demo")
+    height = demo_config.get("height", "100vh")
+
+    config = _build_config(demo_config)
+    # Tell the controller that content lives inside an iframe
+    config["iframeSrcdoc"] = True
+    config_json = html.escape(json.dumps(config), quote=True)
+
+    # The sanitized HTML goes into the iframe's srcdoc attribute — must be
+    # HTML-attribute-escaped so it survives the round-trip through the parser.
+    srcdoc_escaped = html.escape(sanitized_html, quote=True)
+
+    return f"""\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{html.escape(title)}</title>
+<style>
+  body {{
+    margin: 0;
+    background: transparent;
+  }}
+  [data-wireframe-demo] {{
+    width: 100%;
+    height: {height};
+    resize: both;
+    overflow: hidden;
+  }}
+  [data-wireframe-demo] .wfd-iframe {{
+    width: 100%;
+    height: 100%;
+    border: none;
+  }}
+</style>
+<style>
+/* wireframe-demo-controls.css (inlined) */
+{controls_css}
+</style>
+</head>
+<body>
+<div data-wireframe-demo
+     data-wireframe-config="{config_json}">
+  <iframe class="wfd-iframe"
+          srcdoc="{srcdoc_escaped}"
+          sandbox="allow-same-origin"
+          referrerpolicy="no-referrer">
+  </iframe>
+</div>
+<script>
+// wireframe-demo-controller.js (inlined)
+{controller_js}
+</script>
+</body>
+</html>
+"""
+
+
 def main():
     import argparse
 
@@ -138,12 +230,15 @@ def main():
             print(f"  SKIP: no 'wireframe' key in {demo_file.name}")
             continue
 
-        wireframe_path = WIREFRAMES_DIR / wireframe_name
-        if not wireframe_path.exists():
-            print(f"  ERROR: wireframe not found: {wireframe_path}")
-            sys.exit(1)
+        if _is_url(wireframe_name):
+            page_html = build_page_from_url(demo_config, wireframe_name, controller_js, controls_css)
+        else:
+            wireframe_path = WIREFRAMES_DIR / wireframe_name
+            if not wireframe_path.exists():
+                print(f"  ERROR: wireframe not found: {wireframe_path}")
+                sys.exit(1)
 
-        page_html = build_page(demo_config, wireframe_path, controller_js, controls_css)
+            page_html = build_page(demo_config, wireframe_path, controller_js, controls_css)
 
         out_name = demo_file.stem + ".html"
         out_path = out_dir / out_name
