@@ -1,14 +1,19 @@
 Embedding in Confluence
 =======================
 
-Wireframe demos can be embedded in Confluence pages using the
-**built-in iframe macro** — no third-party apps or admin approval
-required.
+Wireframe demos can be embedded in Confluence pages as **animated GIFs**.
+The GIF is generated automatically from the demo by a headless browser
+during the GitHub Actions build — no manual screen recording needed.
 
-The approach works by building self-contained demo pages (wireframe
-HTML + controller JS + CSS + step config all inlined into a single file)
-and hosting them on GitHub Pages.  Confluence embeds each page via
-iframe.
+.. note::
+
+   Confluence's iframe macro uses ``sandbox="sandbox"`` which blocks all
+   JavaScript execution.  For this reason, interactive HTML embeds do
+   not work in Confluence.  Animated GIFs are the recommended approach.
+
+   If your platform allows JavaScript in iframes (or you are viewing
+   outside Confluence), you can also link directly to the self-contained
+   HTML demo pages on GitHub Pages.
 
 
 How it works
@@ -39,11 +44,15 @@ How it works
 
 3. **A build script** (``examples/build.py``) combines each config with
    its wireframe and inlines the controller JS and CSS into a single
-   self-contained HTML page.  The output has no external dependencies
-   and no ``fetch()`` calls — it works in any iframe sandbox.
+   self-contained HTML page.
 
-4. **GitHub Actions** runs the build on push and deploys the output to
-   GitHub Pages.
+4. **A recording script** (``examples/record.py``) opens each built
+   page in headless Chromium, captures frames during one full playback
+   cycle, and assembles them into an animated GIF.  Playback controls
+   are hidden in the recording.
+
+5. **GitHub Actions** runs both scripts on push and deploys the HTML
+   pages and GIFs to GitHub Pages.
 
 
 Setting up your project
@@ -59,29 +68,50 @@ Setting up your project
 
    .. code-block:: bash
 
+      # Build self-contained HTML pages
       python examples/build.py
-      # Open _site/kitchen-sink-full.html in a browser
 
-4. Push to ``main``.  The ``pages.yml`` workflow builds and deploys the
-   pages to GitHub Pages automatically.
+      # Record animated GIFs (requires: pip install playwright Pillow
+      # and: playwright install chromium)
+      python examples/record.py
+
+      # Check the output
+      ls _site/*.html _site/*.gif
+
+4. Push to ``main``.  The ``pages.yml`` workflow builds, records, and
+   deploys everything to GitHub Pages automatically.
 
 
 Embedding in Confluence
 -----------------------
 
-Use Confluence's built-in **iframe macro** (or the "Widget Connector"
-macro on Confluence Cloud):
+Use Confluence's built-in **image macro** to embed the animated GIF:
 
-1. Get your demo page URL from GitHub Pages::
+1. Get the GIF URL from GitHub Pages::
 
-      https://<org>.github.io/<repo>/kitchen-sink-full.html
+      https://<org>.github.io/<repo>/kitchen-sink-full.gif
 
-2. In Confluence, insert an iframe / Widget Connector macro.
+2. In Confluence, insert an image by URL (or use the ``!`` image
+   macro in wiki markup)::
 
-3. Paste the URL and set the height (e.g. ``420px``).
+      !https://<org>.github.io/<repo>/kitchen-sink-full.gif!
 
-That's it.  The demo page is fully self-contained — no ``fetch()``
-calls, no CORS issues, no sandbox restrictions.
+The GIF loops automatically and shows the full demo sequence.
+
+
+Linking to the interactive version
+----------------------------------
+
+For platforms that allow JavaScript in iframes, you can also link
+directly to the self-contained HTML pages:
+
+.. code-block:: text
+
+   https://<org>.github.io/<repo>/kitchen-sink-full.html
+
+These pages include the full interactive demo with play/pause/restart
+controls.  You can use them in any context where JavaScript is
+permitted (direct links, documentation, non-sandboxed iframes, etc.).
 
 
 Reusing wireframes with different steps
@@ -100,7 +130,7 @@ The same wireframe can power multiple demos.  For example:
 
 Both JSON configs reference ``"wireframe": "kitchen-sink.html"`` but
 define different step sequences.  The build script produces a separate
-self-contained page for each.
+self-contained HTML page and GIF for each.
 
 
 Demo config reference
@@ -141,23 +171,43 @@ Demo config reference
 See :doc:`configuration` for full details on step syntax and options.
 
 
+Recording options
+-----------------
+
+The ``record.py`` script accepts several options:
+
+.. code-block:: bash
+
+   python examples/record.py --fps 10 --width 800         # defaults
+   python examples/record.py --demo kitchen-sink-full      # one demo only
+   python examples/record.py --site _site --out _site      # custom dirs
+
+Higher ``--fps`` produces smoother GIFs but larger files.  The default
+of 10 fps is a good balance.
+
+
 Troubleshooting
 ---------------
 
-**Demo does not appear in Confluence iframe**
-   Verify the GitHub Pages URL loads correctly in a new browser tab.
-   Check that GitHub Pages is enabled in the repo settings (Settings →
-   Pages → Source: GitHub Actions).
+**GIF does not appear in Confluence**
+   Verify the GitHub Pages URL loads the GIF correctly in a new browser
+   tab.  Check that GitHub Pages is enabled in the repo settings
+   (Settings → Pages → Source: GitHub Actions).
 
-**Demo controls are cut off**
-   Increase the iframe height in the Confluence macro settings.  The
-   play/pause/restart button is positioned 12 px from the bottom-right
-   corner of the container.
+**GIF is too large**
+   Reduce ``--fps`` (e.g. ``--fps 5``) or ``--width`` (e.g.
+   ``--width 600``).  You can also shorten the step sequence — each
+   step's delay directly affects the recording duration.
 
-**Wireframe styles look wrong**
-   The built pages are fully self-contained with inlined styles.
-   Confluence CSS cannot leak into the iframe.  If styles look wrong,
-   check the wireframe HTML itself.
+**GIF does not show the full demo**
+   The recording duration is calculated from the sum of all step delays
+   plus a 1.5 s buffer.  If your demo has very long CSS transitions
+   that extend beyond the step delay, increase the relevant step's
+   delay.
+
+**Interactive HTML page does not work in Confluence iframe**
+   This is expected.  Confluence's iframe macro uses
+   ``sandbox="sandbox"`` which blocks JavaScript.  Use the GIF instead.
 
 **Changes aren't reflected**
    GitHub Pages has a CDN cache.  After pushing changes, wait a few
