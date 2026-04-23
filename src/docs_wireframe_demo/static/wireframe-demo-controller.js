@@ -170,10 +170,12 @@
 
     var CONTROLS_CSS = [
         ':host {',
-        '  display: block; position: absolute;',
+        '  display: flex; flex-direction: column; gap: 6px;',
+        '  position: absolute;',
         '  bottom: var(--wfd-control-bottom, 12px);',
         '  right: var(--wfd-control-right, 12px);',
         '  z-index: 10000;',
+        '  align-items: center;',
         '}',
         '.wfd-control-btn {',
         '  width: var(--wfd-control-size, 44px);',
@@ -215,6 +217,8 @@
     var ICON_PAUSE = '<svg viewBox="0 0 24 24"><path d="M14,19H18V5H14M6,19H10V5H6V19Z"/></svg>';
     var ICON_PLAY = '<svg viewBox="0 0 24 24"><path d="M8,5.14V19.14L19,12.14L8,5.14Z"/></svg>';
     var ICON_RESTART = '<svg viewBox="0 0 24 24"><path d="M12,4C14.1,4 16.1,4.8 17.6,6.3C20.7,9.4 20.7,14.5 17.6,17.6C15.8,19.5 13.3,20.2 10.9,19.9L11.4,17.9C13.1,18.1 14.9,17.5 16.2,16.2C18.5,13.9 18.5,10.1 16.2,7.7C15.1,6.6 13.5,6 12,6V10.6L7,5.6L12,0.6V4M6.3,17.6C3.7,15 3.3,11 5.1,7.9L6.6,9.4C5.5,11.6 5.9,14.4 7.8,16.2C8.3,16.7 8.9,17.1 9.6,17.4L9,19.4C8,19 7.1,18.4 6.3,17.6Z"/></svg>';
+    var ICON_STEP_BACK = '<svg viewBox="0 0 24 24"><path d="M6,18V6H8V18H6M9.5,12L18,6V18L9.5,12Z"/></svg>';
+    var ICON_STEP_FORWARD = '<svg viewBox="0 0 24 24"><path d="M16,18H18V6H16M6,18L14.5,12L6,6V18Z"/></svg>';
 
     function createControlsHost(instance) {
         var host = document.createElement('div');
@@ -225,29 +229,40 @@
         style.textContent = CONTROLS_CSS;
         shadow.appendChild(style);
 
-        var btn = document.createElement('button');
-        btn.className = 'wfd-control-btn';
-        btn.setAttribute('aria-label', 'Pause demo');
-        btn.setAttribute('data-tooltip', 'Pause');
-        btn.innerHTML = ICON_PAUSE;
-        shadow.appendChild(btn);
+        // Restart button (hidden while playing, shown above play when paused)
+        var restartBtn = document.createElement('button');
+        restartBtn.className = 'wfd-control-btn';
+        restartBtn.setAttribute('aria-label', 'Restart demo');
+        restartBtn.setAttribute('data-tooltip', 'Restart');
+        restartBtn.innerHTML = ICON_RESTART;
+        restartBtn.hidden = true;
+        shadow.appendChild(restartBtn);
 
-        btn.addEventListener('click', function (e) {
+        // Primary button (pause while playing, play while paused)
+        var primaryBtn = document.createElement('button');
+        primaryBtn.className = 'wfd-control-btn';
+        primaryBtn.setAttribute('aria-label', 'Pause demo');
+        primaryBtn.setAttribute('data-tooltip', 'Pause');
+        primaryBtn.innerHTML = ICON_PAUSE;
+        shadow.appendChild(primaryBtn);
+
+        primaryBtn.addEventListener('click', function (e) {
             e.stopPropagation();
             if (instance._playing) {
                 instance.pause();
-                btn.innerHTML = ICON_RESTART;
-                btn.setAttribute('aria-label', 'Restart demo');
-                btn.setAttribute('data-tooltip', 'Restart');
             } else {
-                instance.restart();
-                btn.innerHTML = ICON_PAUSE;
-                btn.setAttribute('aria-label', 'Pause demo');
-                btn.setAttribute('data-tooltip', 'Pause');
+                // Resume from current position
+                instance.play();
             }
         });
 
-        instance._controlBtn = btn;
+        restartBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            instance.restart();
+        });
+
+        instance._controlBtn = primaryBtn;
+        instance._restartBtn = restartBtn;
         return host;
     }
 
@@ -303,6 +318,7 @@
         this._started = false;
         this._timer = null;
         this._controlBtn = null;
+        this._restartBtn = null;
         this._observer = null;
         this._highlightedEls = [];
         this._contentRoot = null; // the element holding fetched HTML
@@ -313,6 +329,9 @@
         this._captionClass = null; // tracks custom className for removal
         this._timelineEl = null;
         this._timelineDots = [];
+        this._tooltipEl = null;
+        this._tooltipDotIndex = -1;
+        this._tooltipHideTimer = null;
         this._htmlSnapshots = [];
         this._timelineHovering = false;
         this._timelineLeaveTimer = null;
@@ -363,9 +382,10 @@
         if (this.config.pauseOnInteraction) {
             container.addEventListener('click', function (e) {
                 if (!e.isTrusted) return;
-                // Ignore clicks on the controls host or timeline
+                // Ignore clicks on the controls host, timeline, or tooltip
                 if (e.target.closest && e.target.closest('.wfd-controls-host')) return;
                 if (e.target.closest && e.target.closest('.wfd-timeline')) return;
+                if (e.target.closest && e.target.closest('.wfd-timeline-tooltip')) return;
                 if (self._playing) {
                     self.pause();
                 }
@@ -490,15 +510,18 @@
 
     WireframeDemo.prototype._updateControlBtn = function () {
         var btn = this._controlBtn;
+        var restartBtn = this._restartBtn;
         if (!btn) return;
         if (this._playing) {
             btn.innerHTML = ICON_PAUSE;
             btn.setAttribute('aria-label', 'Pause demo');
-            btn.setAttribute('data-tooltip', 'pause demo');
+            btn.setAttribute('data-tooltip', 'Pause');
+            if (restartBtn) restartBtn.hidden = true;
         } else {
-            btn.innerHTML = ICON_RESTART;
-            btn.setAttribute('aria-label', 'Restart demo');
-            btn.setAttribute('data-tooltip', 'restart demo');
+            btn.innerHTML = ICON_PLAY;
+            btn.setAttribute('aria-label', 'Play demo');
+            btn.setAttribute('data-tooltip', 'Play');
+            if (restartBtn) restartBtn.hidden = false;
         }
     };
 
@@ -702,7 +725,65 @@
             el.appendChild(dot);
         }
 
-        // Click-to-jump (event delegation)
+        // ── Dot hover tooltip with mini playback controls ───────────
+        var tooltip = document.createElement('div');
+        tooltip.className = 'wfd-timeline-tooltip';
+
+        var ttBack = document.createElement('button');
+        ttBack.className = 'wfd-timeline-tooltip__btn';
+        ttBack.setAttribute('aria-label', 'Step back');
+        ttBack.innerHTML = ICON_STEP_BACK;
+
+        var ttPlay = document.createElement('button');
+        ttPlay.className = 'wfd-timeline-tooltip__btn wfd-timeline-tooltip__btn--play';
+        ttPlay.setAttribute('aria-label', 'Play from here');
+        ttPlay.innerHTML = ICON_PLAY;
+
+        var ttForward = document.createElement('button');
+        ttForward.className = 'wfd-timeline-tooltip__btn';
+        ttForward.setAttribute('aria-label', 'Step forward');
+        ttForward.innerHTML = ICON_STEP_FORWARD;
+
+        tooltip.appendChild(ttBack);
+        tooltip.appendChild(ttPlay);
+        tooltip.appendChild(ttForward);
+        this.container.appendChild(tooltip);
+        this._tooltipEl = tooltip;
+        this._tooltipDotIndex = -1;
+
+        // Tooltip button handlers
+        ttBack.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (self._tooltipDotIndex > 0) {
+                self.jumpToStep(self._tooltipDotIndex - 1);
+                self._hideTooltip();
+            }
+        });
+        ttPlay.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var idx = self._tooltipDotIndex;
+            self._hideTooltip();
+            if (idx >= 0 && idx < self._steps.length) {
+                if (idx !== self._stepIndex) {
+                    self.jumpToStep(idx);
+                }
+                self.play();
+            }
+        });
+        ttForward.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (self._tooltipDotIndex < self._steps.length - 1) {
+                self.jumpToStep(self._tooltipDotIndex + 1);
+                self._hideTooltip();
+            }
+        });
+
+        // Prevent tooltip clicks from bubbling to pauseOnInteraction
+        tooltip.addEventListener('click', function (e) {
+            e.stopPropagation();
+        });
+
+        // Click-to-jump (event delegation on dots)
         el.addEventListener('click', function (e) {
             e.stopPropagation(); // prevent pauseOnInteraction
             var dotEl = e.target.closest ? e.target.closest('.wfd-timeline__dot') : null;
@@ -712,11 +793,16 @@
             self.jumpToStep(idx);
         });
 
-        // Dot hover → caption preview
+        // Dot hover → show tooltip + caption preview
         el.addEventListener('mouseenter', function (e) {
             var dotEl = e.target.closest ? e.target.closest('.wfd-timeline__dot') : null;
             if (!dotEl) return;
+            self._cancelTooltipHide();
             self._timelineHovering = true;
+            var idx = parseInt(dotEl.getAttribute('data-step-index'), 10);
+            if (!isNaN(idx)) {
+                self._showTooltipForDot(dotEl, idx);
+            }
             var captionText = dotEl.getAttribute('data-caption');
             if (captionText && self._captionEl) {
                 self._captionEl.classList.remove('wfd-caption--top', 'wfd-caption--bottom');
@@ -726,24 +812,29 @@
             } else {
                 self._hideCaption();
             }
-        }, true); // capture phase to catch enter on child dots
+        }, true);
 
         el.addEventListener('mouseleave', function (e) {
             var dotEl = e.target.closest ? e.target.closest('.wfd-timeline__dot') : null;
             if (!dotEl) return;
-            self._timelineHovering = false;
-            // Restore the current step's caption
-            if (self._playing && self._stepIndex < self._steps.length) {
-                var currentStep = self._steps[self._stepIndex];
-                if (currentStep.caption) {
-                    self._showCaption(currentStep, null);
-                } else {
-                    self._hideCaption();
-                }
-            } else {
-                self._hideCaption();
-            }
+            // Delay hide so user can move to the tooltip
+            self._scheduleTooltipHide();
         }, true);
+
+        // Keep tooltip open while mouse is over it; hide when it leaves
+        tooltip.addEventListener('mouseenter', function () {
+            self._cancelTooltipHide();
+        });
+
+        // Hide tooltip when mouse leaves the tooltip itself
+        tooltip.addEventListener('mouseleave', function (e) {
+            var related = e.relatedTarget;
+            // If mouse moved back to a dot, let the dot's mouseenter handle it
+            if (related && related.closest && related.closest('.wfd-timeline__dot')) {
+                return;
+            }
+            self._scheduleTooltipHide();
+        });
 
         // Container hover → show/hide timeline
         this.container.addEventListener('mouseenter', function () {
@@ -768,14 +859,77 @@
                 if (self._captionEl) {
                     self._captionEl.classList.remove('wfd-caption--timeline-visible');
                 }
-                // If hovering a dot when mouse leaves, clear that state
                 self._timelineHovering = false;
+                self._hideTooltip();
             }, 150);
         });
 
         this.container.appendChild(el);
         this._timelineEl = el;
         this._updateTimelineDots();
+    };
+
+    WireframeDemo.prototype._showTooltipForDot = function (dotEl, stepIndex) {
+        var tooltip = this._tooltipEl;
+        if (!tooltip) return;
+        this._tooltipDotIndex = stepIndex;
+
+        // Position above the dot, centered horizontally
+        var containerRect = this.container.getBoundingClientRect();
+        var dotRect = dotEl.getBoundingClientRect();
+        var tooltipWidth = 96; // approximate; will be refined after display
+        var left = (dotRect.left - containerRect.left) + (dotRect.width / 2) - (tooltipWidth / 2);
+        var bottom = containerRect.bottom - dotRect.top + 2;
+
+        // Clamp left so it doesn't overflow the container
+        left = Math.max(4, Math.min(left, containerRect.width - tooltipWidth - 4));
+
+        tooltip.style.left = left + 'px';
+        tooltip.style.bottom = bottom + 'px';
+
+        // Disable step-back on first step, step-forward on last step
+        var backBtn = tooltip.querySelector('.wfd-timeline-tooltip__btn');
+        var fwdBtn = tooltip.querySelector('.wfd-timeline-tooltip__btn:last-child');
+        if (backBtn) backBtn.style.opacity = stepIndex > 0 ? '' : '0.35';
+        if (backBtn) backBtn.style.pointerEvents = stepIndex > 0 ? '' : 'none';
+        if (fwdBtn) fwdBtn.style.opacity = stepIndex < this._steps.length - 1 ? '' : '0.35';
+        if (fwdBtn) fwdBtn.style.pointerEvents = stepIndex < this._steps.length - 1 ? '' : 'none';
+
+        tooltip.classList.add('wfd-timeline-tooltip--visible');
+    };
+
+    WireframeDemo.prototype._hideTooltip = function () {
+        if (!this._tooltipEl) return;
+        this._tooltipEl.classList.remove('wfd-timeline-tooltip--visible');
+        this._tooltipDotIndex = -1;
+    };
+
+    WireframeDemo.prototype._scheduleTooltipHide = function () {
+        var self = this;
+        this._cancelTooltipHide();
+        this._tooltipHideTimer = setTimeout(function () {
+            self._tooltipHideTimer = null;
+            self._timelineHovering = false;
+            self._hideTooltip();
+            // Restore the current step's caption
+            if (self._playing && self._stepIndex < self._steps.length) {
+                var currentStep = self._steps[self._stepIndex];
+                if (currentStep.caption) {
+                    self._showCaption(currentStep, null);
+                } else {
+                    self._hideCaption();
+                }
+            } else {
+                self._hideCaption();
+            }
+        }, 120);
+    };
+
+    WireframeDemo.prototype._cancelTooltipHide = function () {
+        if (this._tooltipHideTimer) {
+            clearTimeout(this._tooltipHideTimer);
+            this._tooltipHideTimer = null;
+        }
     };
 
     WireframeDemo.prototype._updateTimelineDots = function () {
@@ -862,17 +1016,7 @@
         }
 
         this._updateTimelineDots();
-
-        // Resume playback
-        if (wasPlaying) {
-            this._playing = true;
-            this._updateControlBtn();
-            var self = this;
-            this._timer = setTimeout(function () {
-                self._timer = null;
-                self._runStep();
-            }, 100);
-        }
+        this._updateControlBtn();
     };
 
     // ── Step execution engine ───────────────────────────────────────────
@@ -1136,6 +1280,11 @@
             this._timelineEl = null;
             this._timelineDots = [];
         }
+        if (this._tooltipEl && this._tooltipEl.parentNode) {
+            this._tooltipEl.parentNode.removeChild(this._tooltipEl);
+            this._tooltipEl = null;
+        }
+        this._cancelTooltipHide();
         if (this._timelineLeaveTimer) {
             clearTimeout(this._timelineLeaveTimer);
             this._timelineLeaveTimer = null;
