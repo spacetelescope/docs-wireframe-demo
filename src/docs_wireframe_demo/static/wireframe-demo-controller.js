@@ -291,6 +291,7 @@
             pauseOnInteraction: true,
             cursor: true,
             cursorSpeed: 300,
+            timeline: true,
             onStepStart: null,
             onStepEnd: null,
             onComplete: null
@@ -310,6 +311,11 @@
         this._cursorY = 0;
         this._captionEl = null;
         this._captionClass = null; // tracks custom className for removal
+        this._timelineEl = null;
+        this._timelineDots = [];
+        this._htmlSnapshots = [];
+        this._timelineHovering = false;
+        this._timelineLeaveTimer = null;
 
         this._init();
     }
@@ -350,12 +356,16 @@
         // Create caption overlay
         this._createCaption();
 
+        // Create timeline overlay (after caption, before pauseOnInteraction)
+        this._createTimeline();
+
         // Pause on user interaction
         if (this.config.pauseOnInteraction) {
             container.addEventListener('click', function (e) {
                 if (!e.isTrusted) return;
-                // Ignore clicks on the controls host itself
+                // Ignore clicks on the controls host or timeline
                 if (e.target.closest && e.target.closest('.wfd-controls-host')) return;
+                if (e.target.closest && e.target.closest('.wfd-timeline')) return;
                 if (self._playing) {
                     self.pause();
                 }
@@ -461,6 +471,7 @@
         this._hideCaption();
         this._resetCursor();
         this._stepIndex = 0;
+        this._htmlSnapshots = [];
 
         // Restore the content DOM to its initial state so the demo
         // starts fresh (removes dynamically added viewers, sidebars, etc.)
@@ -473,6 +484,7 @@
             }));
         }
 
+        this._updateTimelineDots();
         this.play();
     };
 
@@ -613,6 +625,9 @@
         var captionEl = this._captionEl;
         if (!captionEl) return;
 
+        // Don't override caption while user is hovering a timeline dot
+        if (this._timelineHovering) return;
+
         // Remove previous custom class
         if (this._captionClass) {
             captionEl.classList.remove(this._captionClass);
@@ -664,6 +679,202 @@
         this._captionEl.classList.remove('wfd-caption--visible');
     };
 
+    // ── Timeline overlay ────────────────────────────────────────────────
+
+    WireframeDemo.prototype._createTimeline = function () {
+        if (this.config.timeline === false) return;
+        if (this._steps.length <= 1) return;
+
+        var self = this;
+        var el = document.createElement('div');
+        el.className = 'wfd-timeline';
+        this._timelineDots = [];
+
+        for (var i = 0; i < this._steps.length; i++) {
+            var dot = document.createElement('button');
+            dot.className = 'wfd-timeline__dot';
+            dot.setAttribute('data-step-index', String(i));
+            if (this._steps[i].caption) {
+                dot.setAttribute('data-caption', this._steps[i].caption);
+            }
+            dot.setAttribute('aria-label', this._steps[i].caption || ('Step ' + (i + 1)));
+            this._timelineDots.push(dot);
+            el.appendChild(dot);
+        }
+
+        // Click-to-jump (event delegation)
+        el.addEventListener('click', function (e) {
+            e.stopPropagation(); // prevent pauseOnInteraction
+            var dotEl = e.target.closest ? e.target.closest('.wfd-timeline__dot') : null;
+            if (!dotEl) return;
+            var idx = parseInt(dotEl.getAttribute('data-step-index'), 10);
+            if (isNaN(idx)) return;
+            self.jumpToStep(idx);
+        });
+
+        // Dot hover → caption preview
+        el.addEventListener('mouseenter', function (e) {
+            var dotEl = e.target.closest ? e.target.closest('.wfd-timeline__dot') : null;
+            if (!dotEl) return;
+            self._timelineHovering = true;
+            var captionText = dotEl.getAttribute('data-caption');
+            if (captionText && self._captionEl) {
+                self._captionEl.classList.remove('wfd-caption--top', 'wfd-caption--bottom');
+                self._captionEl.classList.add('wfd-caption--bottom');
+                self._captionEl.textContent = captionText;
+                self._captionEl.classList.add('wfd-caption--visible');
+            } else {
+                self._hideCaption();
+            }
+        }, true); // capture phase to catch enter on child dots
+
+        el.addEventListener('mouseleave', function (e) {
+            var dotEl = e.target.closest ? e.target.closest('.wfd-timeline__dot') : null;
+            if (!dotEl) return;
+            self._timelineHovering = false;
+            // Restore the current step's caption
+            if (self._playing && self._stepIndex < self._steps.length) {
+                var currentStep = self._steps[self._stepIndex];
+                if (currentStep.caption) {
+                    self._showCaption(currentStep, null);
+                } else {
+                    self._hideCaption();
+                }
+            } else {
+                self._hideCaption();
+            }
+        }, true);
+
+        // Container hover → show/hide timeline
+        this.container.addEventListener('mouseenter', function () {
+            if (self._timelineLeaveTimer) {
+                clearTimeout(self._timelineLeaveTimer);
+                self._timelineLeaveTimer = null;
+            }
+            if (self._timelineEl) {
+                self._timelineEl.classList.add('wfd-timeline--visible');
+            }
+            if (self._captionEl) {
+                self._captionEl.classList.add('wfd-caption--timeline-visible');
+            }
+        });
+
+        this.container.addEventListener('mouseleave', function () {
+            self._timelineLeaveTimer = setTimeout(function () {
+                self._timelineLeaveTimer = null;
+                if (self._timelineEl) {
+                    self._timelineEl.classList.remove('wfd-timeline--visible');
+                }
+                if (self._captionEl) {
+                    self._captionEl.classList.remove('wfd-caption--timeline-visible');
+                }
+                // If hovering a dot when mouse leaves, clear that state
+                self._timelineHovering = false;
+            }, 150);
+        });
+
+        this.container.appendChild(el);
+        this._timelineEl = el;
+        this._updateTimelineDots();
+    };
+
+    WireframeDemo.prototype._updateTimelineDots = function () {
+        if (!this._timelineDots.length) return;
+        for (var i = 0; i < this._timelineDots.length; i++) {
+            var dot = this._timelineDots[i];
+            if (i <= this._stepIndex) {
+                dot.classList.add('wfd-timeline__dot--filled');
+            } else {
+                dot.classList.remove('wfd-timeline__dot--filled');
+            }
+            if (i === this._stepIndex) {
+                dot.classList.add('wfd-timeline__dot--current');
+            } else {
+                dot.classList.remove('wfd-timeline__dot--current');
+            }
+        }
+    };
+
+    // ── Jump to step (for timeline click navigation) ────────────────────
+
+    WireframeDemo.prototype.jumpToStep = function (targetIndex) {
+        if (targetIndex < 0 || targetIndex >= this._steps.length) return;
+        if (targetIndex === this._stepIndex) return;
+
+        var wasPlaying = this._playing;
+
+        // Stop current timer/animation
+        if (this._timer) {
+            clearTimeout(this._timer);
+            this._timer = null;
+        }
+        this._playing = false;
+
+        this._clearHighlights();
+        this._hideCaption();
+        if (this._cursorEl) this._hideCursor();
+
+        if (targetIndex > this._stepIndex) {
+            // ── Forward jump: replay intermediate steps synchronously ──
+            for (var i = this._stepIndex; i < targetIndex; i++) {
+                var step = this._steps[i];
+                // Cache snapshot before executing
+                if (this.config.timeline !== false && !this._htmlSnapshots[i]) {
+                    this._htmlSnapshots[i] = this._contentRoot.innerHTML;
+                }
+                var el = null;
+                if (step.target) {
+                    el = this._contentRoot.querySelector(step.target) ||
+                         this.container.querySelector(step.target);
+                }
+                this._executeAction(step, el);
+            }
+            this._stepIndex = targetIndex;
+        } else {
+            // ── Backward jump: restore cached snapshot ──────────────────
+            if (this._htmlSnapshots[targetIndex]) {
+                this._contentRoot.innerHTML = this._htmlSnapshots[targetIndex];
+                document.dispatchEvent(new CustomEvent('wireframe-demo-loaded', {
+                    detail: { container: this.container, instance: this }
+                }));
+            } else {
+                // Safety fallback: restore initial HTML and replay 0..target-1
+                if (this._initialHTML !== undefined) {
+                    this._contentRoot.innerHTML = this._initialHTML;
+                    document.dispatchEvent(new CustomEvent('wireframe-demo-loaded', {
+                        detail: { container: this.container, instance: this }
+                    }));
+                }
+                for (var j = 0; j < targetIndex; j++) {
+                    var s = this._steps[j];
+                    if (this.config.timeline !== false && !this._htmlSnapshots[j]) {
+                        this._htmlSnapshots[j] = this._contentRoot.innerHTML;
+                    }
+                    var e = null;
+                    if (s.target) {
+                        e = this._contentRoot.querySelector(s.target) ||
+                            this.container.querySelector(s.target);
+                    }
+                    this._executeAction(s, e);
+                }
+            }
+            this._stepIndex = targetIndex;
+        }
+
+        this._updateTimelineDots();
+
+        // Resume playback
+        if (wasPlaying) {
+            this._playing = true;
+            this._updateControlBtn();
+            var self = this;
+            this._timer = setTimeout(function () {
+                self._timer = null;
+                self._runStep();
+            }, 100);
+        }
+    };
+
     // ── Step execution engine ───────────────────────────────────────────
 
     WireframeDemo.prototype._runStep = function () {
@@ -676,6 +887,14 @@
         var self = this;
         var step = this._steps[this._stepIndex];
         var delay = typeof step.delay === 'number' ? step.delay : 2000;
+
+        // Snapshot HTML state before this step executes (for backward jumps)
+        if (this.config.timeline !== false && !this._htmlSnapshots[this._stepIndex]) {
+            this._htmlSnapshots[this._stepIndex] = this._contentRoot.innerHTML;
+        }
+
+        // Update timeline dots
+        this._updateTimelineDots();
 
         // Callback
         if (this.config.onStepStart) {
@@ -739,6 +958,7 @@
         if (this.config.repeat) {
             var self = this;
             this._stepIndex = 0;
+            this._htmlSnapshots = [];
 
             // Restore the content DOM to its initial state before replaying
             if (this._initialHTML !== undefined) {
@@ -749,6 +969,7 @@
             }
 
             this._resetCursor();
+            this._updateTimelineDots();
 
             this._timer = setTimeout(function () {
                 self._timer = null;
@@ -910,6 +1131,16 @@
             this._observer.disconnect();
             this._observer = null;
         }
+        if (this._timelineEl && this._timelineEl.parentNode) {
+            this._timelineEl.parentNode.removeChild(this._timelineEl);
+            this._timelineEl = null;
+            this._timelineDots = [];
+        }
+        if (this._timelineLeaveTimer) {
+            clearTimeout(this._timelineLeaveTimer);
+            this._timelineLeaveTimer = null;
+        }
+        this._htmlSnapshots = [];
         this.container.removeAttribute('data-wireframe-initialized');
     };
 
