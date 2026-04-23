@@ -227,6 +227,10 @@
     transition: background 0.15s ease;
 }
 
+.wfd-timeline-tooltip__btn[hidden] {
+    display: none;
+}
+
 .wfd-timeline-tooltip__btn:hover {
     background: rgba(255, 255, 255, 0.15);
 }

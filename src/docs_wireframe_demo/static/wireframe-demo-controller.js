@@ -330,6 +330,9 @@
         this._timelineEl = null;
         this._timelineDots = [];
         this._tooltipEl = null;
+        this._tooltipBackBtn = null;
+        this._tooltipPlayBtn = null;
+        this._tooltipFwdBtn = null;
         this._tooltipDotIndex = -1;
         this._tooltipHideTimer = null;
         this._htmlSnapshots = [];
@@ -472,6 +475,7 @@
         this._playing = true;
         this._started = true;
         this._updateControlBtn();
+        this._updateTooltip();
         this._runStep();
     };
 
@@ -483,6 +487,7 @@
             this._timer = null;
         }
         this._updateControlBtn();
+        this._updateTooltip();
     };
 
     WireframeDemo.prototype.restart = function () {
@@ -749,32 +754,48 @@
         tooltip.appendChild(ttForward);
         this.container.appendChild(tooltip);
         this._tooltipEl = tooltip;
+        this._tooltipBackBtn = ttBack;
+        this._tooltipPlayBtn = ttPlay;
+        this._tooltipFwdBtn = ttForward;
         this._tooltipDotIndex = -1;
 
         // Tooltip button handlers
         ttBack.addEventListener('click', function (e) {
             e.stopPropagation();
             if (self._tooltipDotIndex > 0) {
-                self.jumpToStep(self._tooltipDotIndex - 1);
-                self._hideTooltip();
+                var newIdx = self._tooltipDotIndex - 1;
+                self.jumpToStep(newIdx);
+                // Keep tooltip open, reposition on new dot
+                if (self._timelineDots[newIdx]) {
+                    self._showTooltipForDot(self._timelineDots[newIdx], newIdx);
+                }
             }
         });
         ttPlay.addEventListener('click', function (e) {
             e.stopPropagation();
-            var idx = self._tooltipDotIndex;
-            self._hideTooltip();
-            if (idx >= 0 && idx < self._steps.length) {
-                if (idx !== self._stepIndex) {
-                    self.jumpToStep(idx);
+            if (self._playing) {
+                self.pause();
+                self._updateTooltip();
+            } else {
+                var idx = self._tooltipDotIndex;
+                if (idx >= 0 && idx < self._steps.length) {
+                    if (idx !== self._stepIndex) {
+                        self.jumpToStep(idx);
+                    }
+                    self.play();
+                    self._updateTooltip();
                 }
-                self.play();
             }
         });
         ttForward.addEventListener('click', function (e) {
             e.stopPropagation();
             if (self._tooltipDotIndex < self._steps.length - 1) {
-                self.jumpToStep(self._tooltipDotIndex + 1);
-                self._hideTooltip();
+                var newIdx = self._tooltipDotIndex + 1;
+                self.jumpToStep(newIdx);
+                // Keep tooltip open, reposition on new dot
+                if (self._timelineDots[newIdx]) {
+                    self._showTooltipForDot(self._timelineDots[newIdx], newIdx);
+                }
             }
         });
 
@@ -887,15 +908,42 @@
         tooltip.style.left = left + 'px';
         tooltip.style.bottom = bottom + 'px';
 
-        // Disable step-back on first step, step-forward on last step
-        var backBtn = tooltip.querySelector('.wfd-timeline-tooltip__btn');
-        var fwdBtn = tooltip.querySelector('.wfd-timeline-tooltip__btn:last-child');
-        if (backBtn) backBtn.style.opacity = stepIndex > 0 ? '' : '0.35';
-        if (backBtn) backBtn.style.pointerEvents = stepIndex > 0 ? '' : 'none';
-        if (fwdBtn) fwdBtn.style.opacity = stepIndex < this._steps.length - 1 ? '' : '0.35';
-        if (fwdBtn) fwdBtn.style.pointerEvents = stepIndex < this._steps.length - 1 ? '' : 'none';
+        // Show step buttons only if this is the current step AND demo is paused
+        var showStepBtns = (!this._playing && stepIndex === this._stepIndex);
+        if (this._tooltipBackBtn) {
+            this._tooltipBackBtn.hidden = !showStepBtns;
+            if (showStepBtns) {
+                this._tooltipBackBtn.style.opacity = stepIndex > 0 ? '' : '0.35';
+                this._tooltipBackBtn.style.pointerEvents = stepIndex > 0 ? '' : 'none';
+            }
+        }
+        if (this._tooltipFwdBtn) {
+            this._tooltipFwdBtn.hidden = !showStepBtns;
+            if (showStepBtns) {
+                this._tooltipFwdBtn.style.opacity = stepIndex < this._steps.length - 1 ? '' : '0.35';
+                this._tooltipFwdBtn.style.pointerEvents = stepIndex < this._steps.length - 1 ? '' : 'none';
+            }
+        }
+
+        // Play/pause icon based on current state
+        this._updateTooltip();
 
         tooltip.classList.add('wfd-timeline-tooltip--visible');
+    };
+
+    WireframeDemo.prototype._updateTooltip = function () {
+        if (!this._tooltipPlayBtn) return;
+        if (this._playing) {
+            this._tooltipPlayBtn.innerHTML = ICON_PAUSE;
+            this._tooltipPlayBtn.setAttribute('aria-label', 'Pause');
+        } else {
+            this._tooltipPlayBtn.innerHTML = ICON_PLAY;
+            this._tooltipPlayBtn.setAttribute('aria-label', 'Play from here');
+        }
+        // Update step button visibility based on current state
+        var showStepBtns = (!this._playing && this._tooltipDotIndex === this._stepIndex);
+        if (this._tooltipBackBtn) this._tooltipBackBtn.hidden = !showStepBtns;
+        if (this._tooltipFwdBtn) this._tooltipFwdBtn.hidden = !showStepBtns;
     };
 
     WireframeDemo.prototype._hideTooltip = function () {
