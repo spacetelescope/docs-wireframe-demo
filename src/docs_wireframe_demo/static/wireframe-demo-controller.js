@@ -335,6 +335,7 @@
         this._tooltipFwdBtn = null;
         this._tooltipDotIndex = -1;
         this._tooltipDotEl = null;
+        this._tooltipActivated = false;
         this._tooltipHideTimer = null;
         this._htmlSnapshots = [];
         this._timelineHovering = false;
@@ -758,46 +759,52 @@
         this._tooltipBackBtn = ttBack;
         this._tooltipPlayBtn = ttPlay;
         this._tooltipFwdBtn = ttForward;
-        this._tooltipDotIndex = -1;
 
-        // Tooltip button handlers
+        // ── Tooltip button handlers ─────────────────────────────────
+        // After any click, the tooltip becomes "activated" and all
+        // subsequent actions track _stepIndex (the real playback
+        // position) instead of the originally-hovered dot.
+
         ttBack.addEventListener('click', function (e) {
             e.stopPropagation();
-            if (self._tooltipDotIndex > 0) {
-                var newIdx = self._tooltipDotIndex - 1;
-                self.jumpToStep(newIdx);
-                // Keep tooltip open, reposition on new dot
-                if (self._timelineDots[newIdx]) {
-                    self._showTooltipForDot(self._timelineDots[newIdx], newIdx);
-                }
+            self._tooltipActivated = true;
+            if (self._stepIndex > 0) {
+                self.jumpToStep(self._stepIndex - 1);
             }
+            // Update buttons in place — do NOT reposition
+            self._updateTooltipButtons();
+            self._repositionTooltip(); // re-measure in case button visibility changed width
         });
+
         ttPlay.addEventListener('click', function (e) {
             e.stopPropagation();
+            var wasActivated = self._tooltipActivated;
+            self._tooltipActivated = true;
             if (self._playing) {
+                // Pause at wherever the demo currently is
                 self.pause();
-                self._updateTooltip();
             } else {
-                var idx = self._tooltipDotIndex;
-                if (idx >= 0 && idx < self._steps.length) {
-                    if (idx !== self._stepIndex) {
-                        self.jumpToStep(idx);
-                    }
-                    self.play();
-                    self._updateTooltip();
+                // First play click from a hovered dot: jump there first
+                if (!wasActivated && self._tooltipDotIndex >= 0 &&
+                    self._tooltipDotIndex !== self._stepIndex) {
+                    self.jumpToStep(self._tooltipDotIndex);
                 }
+                self.play();
             }
+            // Update buttons in place — do NOT reposition
+            self._updateTooltipButtons();
+            self._repositionTooltip();
         });
+
         ttForward.addEventListener('click', function (e) {
             e.stopPropagation();
-            if (self._tooltipDotIndex < self._steps.length - 1) {
-                var newIdx = self._tooltipDotIndex + 1;
-                self.jumpToStep(newIdx);
-                // Keep tooltip open, reposition on new dot
-                if (self._timelineDots[newIdx]) {
-                    self._showTooltipForDot(self._timelineDots[newIdx], newIdx);
-                }
+            self._tooltipActivated = true;
+            if (self._stepIndex < self._steps.length - 1) {
+                self.jumpToStep(self._stepIndex + 1);
             }
+            // Update buttons in place — do NOT reposition
+            self._updateTooltipButtons();
+            self._repositionTooltip();
         });
 
         // Prevent tooltip clicks from bubbling to pauseOnInteraction
@@ -823,7 +830,9 @@
             self._timelineHovering = true;
             var idx = parseInt(dotEl.getAttribute('data-step-index'), 10);
             if (!isNaN(idx)) {
-                self._showTooltipForDot(dotEl, idx);
+                // Fresh hover: reset activated state
+                self._tooltipActivated = false;
+                self._showTooltipAtDot(dotEl, idx);
             }
             var captionText = dotEl.getAttribute('data-caption');
             if (captionText && self._captionEl) {
@@ -839,19 +848,17 @@
         el.addEventListener('mouseleave', function (e) {
             var dotEl = e.target.closest ? e.target.closest('.wfd-timeline__dot') : null;
             if (!dotEl) return;
-            // Delay hide so user can move to the tooltip
             self._scheduleTooltipHide();
         }, true);
 
-        // Keep tooltip open while mouse is over it; hide when it leaves
+        // Keep tooltip open while mouse is over it
         tooltip.addEventListener('mouseenter', function () {
             self._cancelTooltipHide();
         });
 
-        // Hide tooltip when mouse leaves the tooltip itself
+        // Hide tooltip when mouse leaves it
         tooltip.addEventListener('mouseleave', function (e) {
             var related = e.relatedTarget;
-            // If mouse moved back to a dot, let the dot's mouseenter handle it
             if (related && related.closest && related.closest('.wfd-timeline__dot')) {
                 return;
             }
@@ -891,17 +898,34 @@
         this._updateTimelineDots();
     };
 
-    WireframeDemo.prototype._showTooltipForDot = function (dotEl, stepIndex) {
+    // ── Tooltip helpers ────────────────────────────────────────────────
+
+    /**
+     * Show the tooltip centered above a specific dot.
+     * Called on fresh dot hover (before any button click).
+     */
+    WireframeDemo.prototype._showTooltipAtDot = function (dotEl, stepIndex) {
         var tooltip = this._tooltipEl;
         if (!tooltip) return;
         this._tooltipDotIndex = stepIndex;
         this._tooltipDotEl = dotEl;
 
-        // Update button states first (affects tooltip width)
         this._updateTooltipButtons();
-
-        // Make visible so we can measure, then position
         tooltip.classList.add('wfd-timeline-tooltip--visible');
+        this._repositionTooltip();
+    };
+
+    /**
+     * After a button click, re-anchor the tooltip to the current step.
+     */
+    WireframeDemo.prototype._anchorTooltipToCurrentStep = function () {
+        var idx = this._stepIndex;
+        var dotEl = this._timelineDots[idx];
+        if (dotEl) {
+            this._tooltipDotIndex = idx;
+            this._tooltipDotEl = dotEl;
+        }
+        this._updateTooltipButtons();
         this._repositionTooltip();
     };
 
@@ -914,25 +938,25 @@
             this._tooltipPlayBtn.setAttribute('aria-label', 'Pause');
         } else {
             this._tooltipPlayBtn.innerHTML = ICON_PLAY;
-            this._tooltipPlayBtn.setAttribute('aria-label', 'Play from here');
+            this._tooltipPlayBtn.setAttribute('aria-label', 'Play');
         }
 
-        // Step buttons: show when paused, hide when playing
+        // Step buttons: visible only when paused
         var showStepBtns = !this._playing;
+        // When activated (user has clicked), use _stepIndex for bounds;
+        // otherwise use the hovered dot index
+        var refIdx = this._tooltipActivated ? this._stepIndex : this._tooltipDotIndex;
+
         if (this._tooltipBackBtn) {
             this._tooltipBackBtn.hidden = !showStepBtns;
-            if (showStepBtns) {
-                var atFirst = this._tooltipDotIndex <= 0;
-                this._tooltipBackBtn.style.opacity = atFirst ? '0.35' : '';
-                this._tooltipBackBtn.style.pointerEvents = atFirst ? 'none' : '';
+            if (showStepBtns && refIdx <= 0) {
+                this._tooltipBackBtn.hidden = true;
             }
         }
         if (this._tooltipFwdBtn) {
             this._tooltipFwdBtn.hidden = !showStepBtns;
-            if (showStepBtns) {
-                var atLast = this._tooltipDotIndex >= this._steps.length - 1;
-                this._tooltipFwdBtn.style.opacity = atLast ? '0.35' : '';
-                this._tooltipFwdBtn.style.pointerEvents = atLast ? 'none' : '';
+            if (showStepBtns && refIdx >= this._steps.length - 1) {
+                this._tooltipFwdBtn.hidden = true;
             }
         }
     };
@@ -948,17 +972,20 @@
         var left = (dotRect.left - containerRect.left) + (dotRect.width / 2) - (tooltipWidth / 2);
         var bottom = containerRect.bottom - dotRect.top + 2;
 
-        // Clamp so it doesn't overflow the container
         left = Math.max(4, Math.min(left, containerRect.width - tooltipWidth - 4));
 
         tooltip.style.left = left + 'px';
         tooltip.style.bottom = bottom + 'px';
     };
 
+    /**
+     * Called from play()/pause() to keep tooltip in sync with playback state.
+     * Updates button icons/visibility in place without moving the tooltip.
+     */
     WireframeDemo.prototype._updateTooltip = function () {
         if (!this._tooltipEl || this._tooltipDotIndex < 0) return;
         this._updateTooltipButtons();
-        this._repositionTooltip();
+        this._repositionTooltip(); // re-measure in case button count changed tooltip width
     };
 
     WireframeDemo.prototype._hideTooltip = function () {
@@ -966,6 +993,7 @@
         this._tooltipEl.classList.remove('wfd-timeline-tooltip--visible');
         this._tooltipDotIndex = -1;
         this._tooltipDotEl = null;
+        this._tooltipActivated = false;
     };
 
     WireframeDemo.prototype._scheduleTooltipHide = function () {
@@ -1104,7 +1132,10 @@
         // Update timeline dots
         this._updateTimelineDots();
 
-        // Callback
+        // If tooltip is activated and visible, keep it anchored to current step
+        if (this._tooltipActivated && this._tooltipDotIndex >= 0) {
+            this._anchorTooltipToCurrentStep();
+        }
         if (this.config.onStepStart) {
             this.config.onStepStart(this._stepIndex, step);
         }
