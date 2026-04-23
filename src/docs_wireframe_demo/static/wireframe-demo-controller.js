@@ -32,19 +32,42 @@
     /**
      * Parse a single shorthand string into a step object.
      *
-     * Format:  target@delay:action=value
+     * Format:  target@delay:action=value|caption text
      *   - target  : CSS selector (e.g. "#btn", ".panel")
      *   - @delay  : optional integer milliseconds (default 2000)
      *               append "!" to suppress highlight (e.g. @1500!)
      *   - :action : action name
      *   - =value  : optional value for the action
+     *   - |text   : optional caption text (append ^ or v prefix to
+     *               force top or bottom positioning)
      *
      * Special: if target is "pause", no selector is needed.
      */
     function parseStepString(str) {
         var delay = 2000;
         var noHighlight = false;
+        var caption = undefined;
+        var captionOptions = undefined;
         var working = str;
+
+        // Extract |caption (must be done first, before @/: parsing)
+        var pipeIdx = working.indexOf('|');
+        if (pipeIdx !== -1) {
+            var captionPart = working.substring(pipeIdx + 1);
+            working = working.substring(0, pipeIdx);
+            if (captionPart.length > 0) {
+                var firstChar = captionPart.charAt(0);
+                if (firstChar === '^') {
+                    caption = captionPart.substring(1);
+                    captionOptions = { position: 'top' };
+                } else if (firstChar === 'v') {
+                    caption = captionPart.substring(1);
+                    captionOptions = { position: 'bottom' };
+                } else {
+                    caption = captionPart;
+                }
+            }
+        }
 
         // Extract @delay
         if (working.indexOf('@') !== -1) {
@@ -89,11 +112,16 @@
         }
 
         if (target === 'pause') {
-            return { target: null, action: 'pause', delay: delay, noHighlight: noHighlight };
+            var pauseStep = { target: null, action: 'pause', delay: delay, noHighlight: noHighlight };
+            if (caption !== undefined) pauseStep.caption = caption;
+            if (captionOptions) pauseStep.captionOptions = captionOptions;
+            return pauseStep;
         }
 
         var step = { target: target, action: action, delay: delay, noHighlight: noHighlight };
         if (value !== undefined) step.value = value;
+        if (caption !== undefined) step.caption = caption;
+        if (captionOptions) step.captionOptions = captionOptions;
         return step;
     }
 
@@ -110,13 +138,16 @@
                 out.push(parseStepString(item));
             } else {
                 // Already an object — apply defaults
-                out.push({
+                var obj = {
                     target: item.target || null,
                     action: item.action || 'highlight',
                     value: item.value,
                     delay: typeof item.delay === 'number' ? item.delay : 2000,
                     noHighlight: !!item.noHighlight
-                });
+                };
+                if (item.caption !== undefined) obj.caption = item.caption;
+                if (item.captionOptions) obj.captionOptions = item.captionOptions;
+                out.push(obj);
             }
         }
         return out;
@@ -277,6 +308,8 @@
         this._cursorEl = null;
         this._cursorX = 0;
         this._cursorY = 0;
+        this._captionEl = null;
+        this._captionClass = null; // tracks custom className for removal
 
         this._init();
     }
@@ -313,6 +346,9 @@
         if (this.config.cursor) {
             this._createCursor();
         }
+
+        // Create caption overlay
+        this._createCaption();
 
         // Pause on user interaction
         if (this.config.pauseOnInteraction) {
@@ -422,6 +458,7 @@
     WireframeDemo.prototype.restart = function () {
         this.pause();
         this._clearHighlights();
+        this._hideCaption();
         this._resetCursor();
         this._stepIndex = 0;
 
@@ -563,6 +600,70 @@
         this._cursorEl.style.opacity = '0';
     };
 
+    // ── Caption overlay ───────────────────────────────────────────────────────
+
+    WireframeDemo.prototype._createCaption = function () {
+        var el = document.createElement('div');
+        el.className = 'wfd-caption';
+        this.container.appendChild(el);
+        this._captionEl = el;
+    };
+
+    WireframeDemo.prototype._showCaption = function (step, el) {
+        var captionEl = this._captionEl;
+        if (!captionEl) return;
+
+        // Remove previous custom class
+        if (this._captionClass) {
+            captionEl.classList.remove(this._captionClass);
+            this._captionClass = null;
+        }
+
+        // If no caption on this step, hide and return
+        if (!step.caption) {
+            this._hideCaption();
+            return;
+        }
+
+        // Determine position: explicit override or auto
+        var opts = step.captionOptions || {};
+        var position = opts.position || 'auto';
+
+        if (position === 'auto') {
+            if (el) {
+                var containerRect = this.container.getBoundingClientRect();
+                var elRect = el.getBoundingClientRect();
+                var elMidY = (elRect.top + elRect.height / 2) - containerRect.top;
+                var containerH = containerRect.height;
+                // Target in top half → caption at bottom; target in bottom half → caption at top
+                position = (elMidY < containerH / 2) ? 'bottom' : 'top';
+            } else {
+                position = 'bottom';
+            }
+        }
+
+        // Apply position class
+        captionEl.classList.remove('wfd-caption--top', 'wfd-caption--bottom');
+        captionEl.classList.add(position === 'top' ? 'wfd-caption--top' : 'wfd-caption--bottom');
+
+        // Apply optional custom class
+        if (opts.className) {
+            captionEl.classList.add(opts.className);
+            this._captionClass = opts.className;
+        }
+
+        // Set text (textContent for XSS safety)
+        captionEl.textContent = step.caption;
+
+        // Show
+        captionEl.classList.add('wfd-caption--visible');
+    };
+
+    WireframeDemo.prototype._hideCaption = function () {
+        if (!this._captionEl) return;
+        this._captionEl.classList.remove('wfd-caption--visible');
+    };
+
     // ── Step execution engine ───────────────────────────────────────────
 
     WireframeDemo.prototype._runStep = function () {
@@ -593,6 +694,9 @@
                 el = this.container.querySelector(step.target);
             }
         }
+
+        // Show caption at the start of the step (while cursor moves)
+        this._showCaption(step, el);
 
         // Animate cursor to target, then execute action
         if (this.config.cursor && el) {
@@ -628,6 +732,7 @@
 
     WireframeDemo.prototype._onSequenceEnd = function () {
         this._clearHighlights();
+        this._hideCaption();
         if (this.config.onComplete) {
             this.config.onComplete();
         }
@@ -800,6 +905,7 @@
     WireframeDemo.prototype.destroy = function () {
         this.pause();
         this._clearHighlights();
+        this._hideCaption();
         if (this._observer) {
             this._observer.disconnect();
             this._observer = null;

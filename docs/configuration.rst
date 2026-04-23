@@ -74,7 +74,9 @@ JSON object format
      "action": "click",
      "delay": 1500,
      "value": null,
-     "noHighlight": false
+     "noHighlight": false,
+     "caption": "Click the element",
+     "captionOptions": { "position": "bottom" }
    }
 
 .. list-table::
@@ -100,6 +102,14 @@ JSON object format
    * - ``noHighlight``
      - no
      - If ``true``, skip the highlight animation on this step.
+   * - ``caption``
+     - no
+     - Text to display as a semi-transparent caption overlay during this step.
+   * - ``captionOptions``
+     - no
+     - Object with optional keys: ``position`` (``"top"``, ``"bottom"``, or
+       ``"auto"``; default ``"auto"``) and ``className`` (extra CSS class to
+       apply to the caption element for this step).
 
 
 Shorthand string format
@@ -107,18 +117,26 @@ Shorthand string format
 
 ::
 
-   target@delay:action=value
+   target@delay:action=value|caption text
 
 Examples:
 
 .. code-block:: text
 
    #btn@1500:click                    → click #btn, hold 1500ms
-   #panel@1000:toggle-class=open      → toggle "open" class, hold 1000ms
+   #panel@1000:toggle-class=open      → toggle “open” class, hold 1000ms
    #btn@1500!:click                   → click (no highlight), hold 1500ms
    pause@3000                         → wait 3 seconds
    #el:highlight                      → highlight with default 2000ms delay
-   #input@1000:set-value=Hello        → set input value to "Hello"
+   #input@1000:set-value=Hello        → set input value to “Hello”
+   #btn@1500:click|Click me           → click with auto-positioned caption
+   #btn@1500:click|^Click me          → click with caption forced to top
+   #btn@1500:click|vClick me          → click with caption forced to bottom
+
+Caption text follows the ``|`` pipe character at the end of the string.
+Prefix the caption with ``^`` to force it to the **top** of the container,
+or ``v`` to force it to the **bottom**. Without a prefix, the position is
+chosen automatically (opposite the target element’s vertical position).
 
 
 Supported actions
@@ -196,3 +214,109 @@ The handler receives:
 - ``el`` — the resolved target element (may be ``null``)
 - ``contentRoot`` — the container element holding the injected HTML
 - ``this`` — the ``WireframeDemo`` instance (access ``this.pause()``, ``this.play()``, etc.)
+
+
+Captions (transcript overlay)
+------------------------------
+
+Each step can optionally display a **caption** — a semi-transparent text
+overlay that appears at the top or bottom of the demo container, similar to
+closed captions on a video. Captions are useful for narrating a demo
+walkthrough.
+
+
+Adding captions
+^^^^^^^^^^^^^^^
+
+**Shorthand syntax** — append ``|text`` to any step string:
+
+.. code-block:: text
+
+   #btn-sidebar@1800:click|Open the sidebar
+   pause@2000|Wait for the animation to finish
+
+To force the caption position, prefix the text with ``^`` (top) or ``v``
+(bottom):
+
+.. code-block:: text
+
+   #btn-sidebar@1800:click|^This caption appears at the top
+   #status-bar@1000:highlight|vThis caption appears at the bottom
+
+**JSON object syntax** — use the ``caption`` and ``captionOptions`` fields:
+
+.. code-block:: json
+
+   {
+     "target": "#input-search",
+     "action": "set-value",
+     "value": "pipeline",
+     "delay": 1500,
+     "caption": "Search for a pipeline",
+     "captionOptions": {
+       "position": "top",
+       "className": "my-custom-caption"
+     }
+   }
+
+``captionOptions`` fields:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 80
+
+   * - Key
+     - Description
+   * - ``position``
+     - ``"top"``, ``"bottom"``, or ``"auto"`` (default). When ``"auto"``,
+       the caption is placed opposite the target element — if the target
+       is in the top half of the container the caption appears at the
+       bottom, and vice versa. Steps without a target (e.g. ``pause``)
+       default to the bottom.
+   * - ``className``
+     - An extra CSS class applied to the caption element for this step,
+       allowing per-step styling.
+
+Steps without a ``caption`` (or with an empty string) will hide any
+previously visible caption.
+
+
+Styling captions
+^^^^^^^^^^^^^^^^
+
+Caption appearance is controlled via CSS custom properties set on the
+``[data-wireframe-demo]`` container:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 40 30
+
+   * - Property
+     - What it controls
+     - Default
+   * - ``--wfd-caption-bg``
+     - Background color
+     - ``rgba(0,0,0,0.72)``
+   * - ``--wfd-caption-color``
+     - Text color
+     - ``#fff``
+   * - ``--wfd-caption-font-size``
+     - Font size
+     - ``14px``
+   * - ``--wfd-caption-padding``
+     - Padding
+     - ``10px 16px``
+   * - ``--wfd-caption-inset``
+     - Left & right inset — centres the caption and keeps it clear of the
+       control button
+     - ``68px``
+
+Example:
+
+.. code-block:: css
+
+   [data-wireframe-demo] {
+       --wfd-caption-bg: rgba(0, 0, 80, 0.85);
+       --wfd-caption-font-size: 16px;
+       --wfd-caption-padding: 12px 20px;
+   }

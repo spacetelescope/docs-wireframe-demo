@@ -31,6 +31,49 @@
     border-radius: 2px;
 }
 
+/* ── Caption overlay ─────────────────────────────────────────────── */
+
+/*
+ * Themeable via CSS custom properties:
+ *   --wfd-caption-bg           Background (default: rgba(0,0,0,0.72))
+ *   --wfd-caption-color        Text color (default: #fff)
+ *   --wfd-caption-font-size    Font size (default: 14px)
+ *   --wfd-caption-padding      Padding (default: 10px 16px)
+ *   --wfd-caption-inset        Left & right inset — keeps the caption
+ *                              clear of the control button (default: 68px)
+ */
+
+.wfd-caption {
+    position: absolute;
+    left: var(--wfd-caption-inset, 68px);
+    right: var(--wfd-caption-inset, 68px);
+    z-index: 9998;
+    padding: var(--wfd-caption-padding, 10px 16px);
+    background: var(--wfd-caption-bg, rgba(0, 0, 0, 0.72));
+    color: var(--wfd-caption-color, #fff);
+    font-size: var(--wfd-caption-font-size, 14px);
+    line-height: 1.4;
+    text-align: center;
+    pointer-events: none;
+    border-radius: 6px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.wfd-caption--top {
+    top: 8px;
+    bottom: auto;
+}
+
+.wfd-caption--bottom {
+    bottom: 8px;
+    top: auto;
+}
+
+.wfd-caption--visible {
+    opacity: 1;
+}
+
 /* ── Controls host positioning ───────────────────────────────────── */
 
 .wfd-controls-host {
