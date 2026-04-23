@@ -15,8 +15,14 @@
   }
 
   /* ── App shell ─────────────────────────────────────────────────── */
-  /* height:100% fills the [data-wireframe-demo] container exactly,
-     keeping overflow inside .mast-form so the demo controls stay fixed */
+  /* .wfd-content is created by the controller as the content root.
+     It must fill the container exactly so scrollIntoView only scrolls
+     inside .mast-form, not the outer [data-wireframe-demo] div.       */
+
+  .wfd-content {
+    height: 100%;
+    overflow: hidden;
+  }
 
   .mast-app {
     background:
