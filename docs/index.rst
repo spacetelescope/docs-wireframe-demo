@@ -29,3 +29,4 @@ This package handles:
    accessibility
    standalone
    embedding
+   ci-integration

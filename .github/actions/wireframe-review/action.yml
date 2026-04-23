@@ -1,0 +1,42 @@
+name: 'Wireframe Demo Review'
+description: >
+  Auto-discovers wireframe demos in your docs, analyzes PR diffs for UI-affecting
+  changes, and posts a comment with proposed wireframe/step updates using an LLM.
+
+inputs:
+  docs-root:
+    description: 'Path to the documentation root directory to scan for wireframe demos.'
+    required: false
+    default: 'docs/'
+  source-root:
+    description: 'Path to the source code root. Only diffs under this path are analyzed.'
+    required: false
+    default: '.'
+  config-path:
+    description: >
+      Path to an explicit wireframe-review config file (.github/wireframe-review.yml).
+      If provided, uses explicit wireframe mappings instead of auto-discovery.
+    required: false
+    default: ''
+  provider:
+    description: 'LLM provider: github-models, openai, or anthropic.'
+    required: false
+    default: 'github-models'
+  model:
+    description: 'LLM model name. Defaults to a provider-appropriate model if not set.'
+    required: false
+    default: ''
+  api-key:
+    description: >
+      API key for the LLM provider. Not required for github-models (uses GITHUB_TOKEN).
+      For openai/anthropic, provide the appropriate API key.
+    required: false
+    default: ''
+  max-diff-size:
+    description: 'Maximum diff size in characters to send to the LLM. Larger diffs are summarized.'
+    required: false
+    default: '50000'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
