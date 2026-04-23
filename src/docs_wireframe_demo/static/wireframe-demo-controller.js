@@ -176,6 +176,9 @@
         '  right: var(--wfd-control-right, 12px);',
         '  z-index: 10000;',
         '  align-items: center;',
+        '  /* Height spans from bottom:12px up to caption level (bottom:90px + btn height) */',
+        '  height: calc(90px - 12px + var(--wfd-control-size, 44px));',
+        '  justify-content: flex-end;',
         '}',
         '@keyframes wfd-btn-pulse {',
         '  0%   { transform: scale(1); opacity: 0.5; }',
@@ -223,7 +226,31 @@
         '  font-weight: 600; white-space: nowrap; pointer-events: none;',
         '  opacity: 0; transition: opacity 0.2s;',
         '}',
-        '.wfd-control-btn:hover::after { opacity: 1; }'
+        '.wfd-control-btn:hover::after { opacity: 1; }',
+        /* Speed row */
+        '.wfd-speed-row {',
+        '  display: flex; align-items: center; gap: 2px;',
+        '  opacity: 0; pointer-events: none;',
+        '  transition: opacity 0.2s;',
+        '}',
+        ':host(:hover) .wfd-speed-row { opacity: 1; pointer-events: auto; }',
+        '.wfd-control-btn--speed {',
+        '  width: 28px; height: 28px;',
+        '  border-radius: var(--wfd-control-radius, 8px);',
+        '}',
+        '.wfd-control-btn--speed svg {',
+        '  width: 16px; height: 16px;',
+        '}',
+        '.wfd-control-btn--speed::after { display: none; }',
+        '.wfd-speed-label {',
+        '  font-size: 11px; font-weight: 600; min-width: 28px;',
+        '  text-align: center; color: var(--wfd-control-color, #fff);',
+        '  user-select: none;',
+        '}',
+        /* Restart positioned to align with bumped captions */
+        '.wfd-control-btn--restart {',
+        '  margin-bottom: auto;',
+        '}'
     ].join('\n');
 
     // SVG icons (Material Design style, white fill via currentColor)
@@ -232,6 +259,9 @@
     var ICON_RESTART = '<svg viewBox="0 0 24 24"><path d="M12,4C14.1,4 16.1,4.8 17.6,6.3C20.7,9.4 20.7,14.5 17.6,17.6C15.8,19.5 13.3,20.2 10.9,19.9L11.4,17.9C13.1,18.1 14.9,17.5 16.2,16.2C18.5,13.9 18.5,10.1 16.2,7.7C15.1,6.6 13.5,6 12,6V10.6L7,5.6L12,0.6V4M6.3,17.6C3.7,15 3.3,11 5.1,7.9L6.6,9.4C5.5,11.6 5.9,14.4 7.8,16.2C8.3,16.7 8.9,17.1 9.6,17.4L9,19.4C8,19 7.1,18.4 6.3,17.6Z"/></svg>';
     var ICON_STEP_BACK = '<svg viewBox="0 0 24 24"><path d="M6,18V6H8V18H6M9.5,12L18,6V18L9.5,12Z"/></svg>';
     var ICON_STEP_FORWARD = '<svg viewBox="0 0 24 24"><path d="M16,18H18V6H16M6,18L14.5,12L6,6V18Z"/></svg>';
+
+    var ICON_SPEED_DOWN = '<svg viewBox="0 0 24 24"><path d="M19,13H5V11H19V13Z"/></svg>';
+    var ICON_SPEED_UP = '<svg viewBox="0 0 24 24"><path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"/></svg>';
 
     function createControlsHost(instance) {
         var host = document.createElement('div');
@@ -242,14 +272,39 @@
         style.textContent = CONTROLS_CSS;
         shadow.appendChild(style);
 
-        // Restart button (hidden while playing, shown above play when paused)
+        // Restart button (hidden while playing, shown when paused)
         var restartBtn = document.createElement('button');
-        restartBtn.className = 'wfd-control-btn';
+        restartBtn.className = 'wfd-control-btn wfd-control-btn--restart';
         restartBtn.setAttribute('aria-label', 'Restart demo');
         restartBtn.setAttribute('data-tooltip', 'Restart');
         restartBtn.innerHTML = ICON_RESTART;
         restartBtn.hidden = true;
         shadow.appendChild(restartBtn);
+
+        // Speed controls row (hidden by default, shown on host hover)
+        var speedRow = document.createElement('div');
+        speedRow.className = 'wfd-speed-row';
+
+        var slowBtn = document.createElement('button');
+        slowBtn.className = 'wfd-control-btn wfd-control-btn--speed';
+        slowBtn.setAttribute('aria-label', 'Slow down');
+        slowBtn.setAttribute('data-tooltip', 'Slower');
+        slowBtn.innerHTML = ICON_SPEED_DOWN;
+
+        var speedLabel = document.createElement('span');
+        speedLabel.className = 'wfd-speed-label';
+        speedLabel.textContent = '1\u00d7';
+
+        var fastBtn = document.createElement('button');
+        fastBtn.className = 'wfd-control-btn wfd-control-btn--speed';
+        fastBtn.setAttribute('aria-label', 'Speed up');
+        fastBtn.setAttribute('data-tooltip', 'Faster');
+        fastBtn.innerHTML = ICON_SPEED_UP;
+
+        speedRow.appendChild(slowBtn);
+        speedRow.appendChild(speedLabel);
+        speedRow.appendChild(fastBtn);
+        shadow.appendChild(speedRow);
 
         // Primary button (pause while playing, play while paused)
         var primaryBtn = document.createElement('button');
@@ -264,7 +319,6 @@
             if (instance._playing) {
                 instance.pause();
             } else {
-                // Resume from current position
                 instance.play();
             }
         });
@@ -272,6 +326,36 @@
         restartBtn.addEventListener('click', function (e) {
             e.stopPropagation();
             instance.restart();
+        });
+
+        var SPEED_STEPS = [0.25, 0.5, 1, 2, 4];
+
+        slowBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var cur = instance._speedFactor;
+            for (var i = SPEED_STEPS.length - 1; i >= 0; i--) {
+                if (SPEED_STEPS[i] < cur) {
+                    instance._speedFactor = SPEED_STEPS[i];
+                    break;
+                }
+            }
+            speedLabel.textContent = instance._speedFactor + '\u00d7';
+            slowBtn.style.visibility = instance._speedFactor <= SPEED_STEPS[0] ? 'hidden' : '';
+            fastBtn.style.visibility = '';
+        });
+
+        fastBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var cur = instance._speedFactor;
+            for (var i = 0; i < SPEED_STEPS.length; i++) {
+                if (SPEED_STEPS[i] > cur) {
+                    instance._speedFactor = SPEED_STEPS[i];
+                    break;
+                }
+            }
+            speedLabel.textContent = instance._speedFactor + '\u00d7';
+            fastBtn.style.visibility = instance._speedFactor >= SPEED_STEPS[SPEED_STEPS.length - 1] ? 'hidden' : '';
+            slowBtn.style.visibility = '';
         });
 
         instance._controlBtn = primaryBtn;
@@ -340,6 +424,7 @@
         this._cursorY = 0;
         this._captionEl = null;
         this._captionClass = null; // tracks custom className for removal
+        this._speedFactor = 1;
         this._timelineEl = null;
         this._timelineDots = [];
         this._tooltipEl = null;
@@ -613,7 +698,7 @@
 
         var cursorEl = this._cursorEl;
         var self = this;
-        var duration = this.config.cursorSpeed;
+        var duration = this.config.cursorSpeed / this._speedFactor;
         var startTime = null;
 
         function tick(now) {
@@ -1172,7 +1257,8 @@
 
         var self = this;
         var step = this._steps[this._stepIndex];
-        var delay = typeof step.delay === 'number' ? step.delay : 2000;
+        var baseDelay = typeof step.delay === 'number' ? step.delay : 2000;
+        var delay = baseDelay / this._speedFactor;
 
         // Snapshot HTML state before this step executes (for backward jumps)
         if (this.config.timeline !== false && !this._htmlSnapshots[this._stepIndex]) {
@@ -1208,7 +1294,7 @@
 
         // Animate cursor to target, then execute action
         if (this.config.cursor && el) {
-            var cursorSpeed = this.config.cursorSpeed;
+            var cursorSpeed = this.config.cursorSpeed / this._speedFactor;
             this._moveCursorTo(el, function () {
                 if (!self._playing) return;
                 self._executeAction(step, el);
@@ -1263,7 +1349,7 @@
             this._timer = setTimeout(function () {
                 self._timer = null;
                 self._runStep();
-            }, 1000);
+            }, 1000 / self._speedFactor);
         } else {
             this._playing = false;
             this._updateControlBtn();
