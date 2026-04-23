@@ -136,6 +136,24 @@
             var item = raw[i];
             if (typeof item === 'string') {
                 out.push(parseStepString(item));
+            } else if (item.actions && Array.isArray(item.actions)) {
+                // Multi-action step: each sub-action has its own target/action/value
+                var multi = {
+                    actions: [],
+                    delay: typeof item.delay === 'number' ? item.delay : 2000,
+                    noHighlight: !!item.noHighlight
+                };
+                for (var j = 0; j < item.actions.length; j++) {
+                    var sub = item.actions[j];
+                    multi.actions.push({
+                        target: sub.target || null,
+                        action: sub.action || 'highlight',
+                        value: sub.value
+                    });
+                }
+                if (item.caption !== undefined) multi.caption = item.caption;
+                if (item.captionOptions) multi.captionOptions = item.captionOptions;
+                out.push(multi);
             } else {
                 // Already an object — apply defaults
                 var obj = {
@@ -1303,13 +1321,13 @@
         // Clear previous highlights
         this._clearHighlights();
 
-        // Resolve target element
+        // Resolve target element (for multi-action steps, use the first sub-action's target)
         var el = null;
-        if (step.target) {
-            el = this._contentRoot.querySelector(step.target);
+        var stepTarget = step.target || (step.actions && step.actions.length > 0 ? step.actions[0].target : null);
+        if (stepTarget) {
+            el = this._contentRoot.querySelector(stepTarget);
             if (!el) {
-                // Also try the container itself (for elements outside _contentRoot)
-                el = this.container.querySelector(step.target);
+                el = this.container.querySelector(stepTarget);
             }
         }
 
@@ -1333,7 +1351,7 @@
                 }, remaining);
             });
         } else {
-            if (this.config.cursor && step.action === 'pause') {
+            if (this.config.cursor && !step.actions && step.action === 'pause') {
                 this._hideCursor();
             }
             this._executeAction(step, el);
@@ -1381,8 +1399,24 @@
     };
 
     WireframeDemo.prototype._executeAction = function (step, el) {
-        var action = step.action;
-        var value = step.value;
+        // Multi-action step: execute each sub-action in sequence
+        if (step.actions && Array.isArray(step.actions)) {
+            for (var i = 0; i < step.actions.length; i++) {
+                var sub = step.actions[i];
+                var subEl = null;
+                if (sub.target) {
+                    subEl = this._contentRoot.querySelector(sub.target) ||
+                            this.container.querySelector(sub.target);
+                }
+                this._executeSingleAction(sub.action, sub.value, subEl, step);
+            }
+            return;
+        }
+
+        this._executeSingleAction(step.action, step.value, el, step);
+    };
+
+    WireframeDemo.prototype._executeSingleAction = function (action, value, el, step) {
 
         // Check custom actions first
         if (_customActions[action]) {

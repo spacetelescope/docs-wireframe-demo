@@ -120,6 +120,53 @@ JSON object format
        apply to the caption element for this step).
 
 
+Multi-action steps
+^^^^^^^^^^^^^^^^^^
+
+A step can execute **multiple actions at once** by providing an ``actions``
+array instead of a single ``action`` field. All sub-actions run
+synchronously (no delay between them), and the step's ``delay`` applies
+after all actions have executed.
+
+This is useful when several DOM changes should appear simultaneously —
+for example, updating an image and its legend in the same visual beat,
+or toggling a class while also setting text.
+
+.. code-block:: json
+
+   {
+     "actions": [
+       { "target": "#sidebar", "action": "toggle-class", "value": "open" },
+       { "target": "#status", "action": "set-text", "value": "Ready" }
+     ],
+     "delay": 1500,
+     "caption": "Open sidebar and update status"
+   }
+
+Each object in the ``actions`` array supports:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 15 70
+
+   * - Field
+     - Required
+     - Description
+   * - ``target``
+     - no
+     - CSS selector for the sub-action's target element.
+   * - ``action``
+     - yes
+     - Action name (same set as single-action steps).
+   * - ``value``
+     - no
+     - Action-specific value.
+
+The top-level ``delay``, ``caption``, ``captionOptions``, and
+``noHighlight`` fields work the same as on a single-action step. The
+cursor (if enabled) moves to the first sub-action's target element.
+
+
 Shorthand string format
 ^^^^^^^^^^^^^^^^^^^^^^^
 
