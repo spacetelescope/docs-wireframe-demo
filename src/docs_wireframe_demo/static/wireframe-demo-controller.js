@@ -334,6 +334,7 @@
         this._tooltipPlayBtn = null;
         this._tooltipFwdBtn = null;
         this._tooltipDotIndex = -1;
+        this._tooltipDotEl = null;
         this._tooltipHideTimer = null;
         this._htmlSnapshots = [];
         this._timelineHovering = false;
@@ -894,45 +895,20 @@
         var tooltip = this._tooltipEl;
         if (!tooltip) return;
         this._tooltipDotIndex = stepIndex;
+        this._tooltipDotEl = dotEl;
 
-        // Position above the dot, centered horizontally
-        var containerRect = this.container.getBoundingClientRect();
-        var dotRect = dotEl.getBoundingClientRect();
-        var tooltipWidth = 96; // approximate; will be refined after display
-        var left = (dotRect.left - containerRect.left) + (dotRect.width / 2) - (tooltipWidth / 2);
-        var bottom = containerRect.bottom - dotRect.top + 2;
+        // Update button states first (affects tooltip width)
+        this._updateTooltipButtons();
 
-        // Clamp left so it doesn't overflow the container
-        left = Math.max(4, Math.min(left, containerRect.width - tooltipWidth - 4));
-
-        tooltip.style.left = left + 'px';
-        tooltip.style.bottom = bottom + 'px';
-
-        // Show step buttons only if this is the current step AND demo is paused
-        var showStepBtns = (!this._playing && stepIndex === this._stepIndex);
-        if (this._tooltipBackBtn) {
-            this._tooltipBackBtn.hidden = !showStepBtns;
-            if (showStepBtns) {
-                this._tooltipBackBtn.style.opacity = stepIndex > 0 ? '' : '0.35';
-                this._tooltipBackBtn.style.pointerEvents = stepIndex > 0 ? '' : 'none';
-            }
-        }
-        if (this._tooltipFwdBtn) {
-            this._tooltipFwdBtn.hidden = !showStepBtns;
-            if (showStepBtns) {
-                this._tooltipFwdBtn.style.opacity = stepIndex < this._steps.length - 1 ? '' : '0.35';
-                this._tooltipFwdBtn.style.pointerEvents = stepIndex < this._steps.length - 1 ? '' : 'none';
-            }
-        }
-
-        // Play/pause icon based on current state
-        this._updateTooltip();
-
+        // Make visible so we can measure, then position
         tooltip.classList.add('wfd-timeline-tooltip--visible');
+        this._repositionTooltip();
     };
 
-    WireframeDemo.prototype._updateTooltip = function () {
+    WireframeDemo.prototype._updateTooltipButtons = function () {
         if (!this._tooltipPlayBtn) return;
+
+        // Play/pause icon
         if (this._playing) {
             this._tooltipPlayBtn.innerHTML = ICON_PAUSE;
             this._tooltipPlayBtn.setAttribute('aria-label', 'Pause');
@@ -940,16 +916,56 @@
             this._tooltipPlayBtn.innerHTML = ICON_PLAY;
             this._tooltipPlayBtn.setAttribute('aria-label', 'Play from here');
         }
-        // Update step button visibility based on current state
-        var showStepBtns = (!this._playing && this._tooltipDotIndex === this._stepIndex);
-        if (this._tooltipBackBtn) this._tooltipBackBtn.hidden = !showStepBtns;
-        if (this._tooltipFwdBtn) this._tooltipFwdBtn.hidden = !showStepBtns;
+
+        // Step buttons: show when paused, hide when playing
+        var showStepBtns = !this._playing;
+        if (this._tooltipBackBtn) {
+            this._tooltipBackBtn.hidden = !showStepBtns;
+            if (showStepBtns) {
+                var atFirst = this._tooltipDotIndex <= 0;
+                this._tooltipBackBtn.style.opacity = atFirst ? '0.35' : '';
+                this._tooltipBackBtn.style.pointerEvents = atFirst ? 'none' : '';
+            }
+        }
+        if (this._tooltipFwdBtn) {
+            this._tooltipFwdBtn.hidden = !showStepBtns;
+            if (showStepBtns) {
+                var atLast = this._tooltipDotIndex >= this._steps.length - 1;
+                this._tooltipFwdBtn.style.opacity = atLast ? '0.35' : '';
+                this._tooltipFwdBtn.style.pointerEvents = atLast ? 'none' : '';
+            }
+        }
+    };
+
+    WireframeDemo.prototype._repositionTooltip = function () {
+        var tooltip = this._tooltipEl;
+        var dotEl = this._tooltipDotEl;
+        if (!tooltip || !dotEl) return;
+
+        var containerRect = this.container.getBoundingClientRect();
+        var dotRect = dotEl.getBoundingClientRect();
+        var tooltipWidth = tooltip.offsetWidth;
+        var left = (dotRect.left - containerRect.left) + (dotRect.width / 2) - (tooltipWidth / 2);
+        var bottom = containerRect.bottom - dotRect.top + 2;
+
+        // Clamp so it doesn't overflow the container
+        left = Math.max(4, Math.min(left, containerRect.width - tooltipWidth - 4));
+
+        tooltip.style.left = left + 'px';
+        tooltip.style.bottom = bottom + 'px';
+    };
+
+    WireframeDemo.prototype._updateTooltip = function () {
+        if (!this._tooltipEl || this._tooltipDotIndex < 0) return;
+        this._updateTooltipButtons();
+        this._repositionTooltip();
     };
 
     WireframeDemo.prototype._hideTooltip = function () {
         if (!this._tooltipEl) return;
         this._tooltipEl.classList.remove('wfd-timeline-tooltip--visible');
         this._tooltipDotIndex = -1;
+        this._tooltipDotEl = null;
     };
 
     WireframeDemo.prototype._scheduleTooltipHide = function () {
