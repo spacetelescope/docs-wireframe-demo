@@ -16,15 +16,27 @@
     "#status-badge@600:set-text=running",
     "#log-last@1200:scroll-into-view|Scroll to the latest log entry",
     "#btn-action@1500:click|Run the batch action",
-    "#toast@800:add-class=visible|A toast notification appears",
-    "#toast@1000:set-text=Pipeline started successfully!",
+    {
+      "actions": [
+        { "target": "#toast", "action": "add-class", "value": "visible" },
+        { "target": "#toast", "action": "set-text", "value": "Pipeline started successfully!" }
+      ],
+      "delay": 1200,
+      "caption": "A toast notification appears"
+    },
     "pause@2000",
     "#toast@600:remove-class=visible",
     "#card-2-desc@1200:set-text=Batch mode activated — processing 50 items.|Update the card description",
     "#card-2-tag@800:set-text=active",
     "#card-1@1000:toggle-class=highlighted",
-    "#status-text@1000:set-text=Complete|^Mark the pipeline as complete",
-    "#status-badge@600:set-text=done",
+    {
+      "actions": [
+        { "target": "#status-text", "action": "set-text", "value": "Complete" },
+        { "target": "#status-badge", "action": "set-text", "value": "done" }
+      ],
+      "delay": 1000,
+      "caption": "^Mark the pipeline as complete"
+    },
     "#info-1@1000:remove-attribute=data-tooltip",
     "#sidebar@1200:toggle-class=open|vClose the sidebar",
     "pause@2000"
