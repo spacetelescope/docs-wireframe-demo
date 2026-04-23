@@ -177,6 +177,10 @@
         '  z-index: 10000;',
         '  align-items: center;',
         '}',
+        '@keyframes wfd-btn-pulse {',
+        '  0%   { transform: scale(1); opacity: 0.5; }',
+        '  100% { transform: scale(2); opacity: 0; }',
+        '}',
         '.wfd-control-btn {',
         '  width: var(--wfd-control-size, 44px);',
         '  height: var(--wfd-control-size, 44px);',
@@ -188,6 +192,15 @@
         '  display: flex; align-items: center; justify-content: center;',
         '  transition: background 0.2s, transform 0.2s;',
         '  position: relative;',
+        '}',
+        '.wfd-control-btn::before {',
+        '  content: ""; position: absolute; inset: 0;',
+        '  border-radius: inherit;',
+        '  background: var(--wfd-control-color, #fff);',
+        '  opacity: 0; pointer-events: none;',
+        '}',
+        '.wfd-control-btn--pulse::before {',
+        '  animation: wfd-btn-pulse 0.5s ease-out;',
         '}',
         '.wfd-control-btn:hover {',
         '  background: var(--wfd-control-bg-hover, rgba(0,0,0,0.75));',
@@ -488,7 +501,7 @@
             clearTimeout(this._timer);
             this._timer = null;
         }
-        this._updateControlBtn();
+        this._updateControlBtn(true);
         this._updateTooltip();
     };
 
@@ -515,7 +528,7 @@
         this.play();
     };
 
-    WireframeDemo.prototype._updateControlBtn = function () {
+    WireframeDemo.prototype._updateControlBtn = function (pulse) {
         var btn = this._controlBtn;
         var restartBtn = this._restartBtn;
         if (!btn) return;
@@ -523,12 +536,18 @@
             btn.innerHTML = ICON_PAUSE;
             btn.setAttribute('aria-label', 'Pause demo');
             btn.setAttribute('data-tooltip', 'Pause');
+            btn.classList.remove('wfd-control-btn--pulse');
             if (restartBtn) restartBtn.hidden = true;
         } else {
             btn.innerHTML = ICON_PLAY;
             btn.setAttribute('aria-label', 'Play demo');
             btn.setAttribute('data-tooltip', 'Play');
             if (restartBtn) restartBtn.hidden = false;
+            if (pulse) {
+                btn.classList.remove('wfd-control-btn--pulse');
+                void btn.offsetWidth;
+                btn.classList.add('wfd-control-btn--pulse');
+            }
         }
     };
 
