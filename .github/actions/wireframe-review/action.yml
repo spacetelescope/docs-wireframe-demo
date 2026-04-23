@@ -36,6 +36,13 @@ inputs:
     description: 'Maximum diff size in characters to send to the LLM. Larger diffs are summarized.'
     required: false
     default: '50000'
+  max-prompt-tokens:
+    description: >
+      Maximum total prompt tokens for each LLM request. The diff is truncated to fit
+      within this budget after the wireframe content. Lower this for providers with
+      small context windows (e.g., 6000 for GitHub Models free tier).
+    required: false
+    default: '100000'
 
 runs:
   using: 'node20'

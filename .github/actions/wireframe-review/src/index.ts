@@ -15,6 +15,7 @@ import { createLLMClient } from './llm';
 import { analyzeAll } from './analyze';
 import { formatComment, postComment } from './comment';
 import { validateDemo, ValidationResult } from './validate';
+import { pushSuggestions } from './suggestions';
 
 interface ExplicitConfig {
   wireframes: Array<{
@@ -37,6 +38,7 @@ async function run(): Promise<void> {
     const model = core.getInput('model') || '';
     const apiKey = core.getInput('api-key') || '';
     const maxDiffSize = parseInt(core.getInput('max-diff-size') || '50000', 10);
+    const maxPromptTokens = parseInt(core.getInput('max-prompt-tokens') || '100000', 10);
     const githubToken = process.env.GITHUB_TOKEN || '';
 
     if (!githubToken) {
@@ -131,13 +133,13 @@ async function run(): Promise<void> {
     }
 
     // ── Collect diff ───────────────────────────────────────────────
-    const wireframeArtifactPaths = allArtifacts.flatMap(a => {
-      const paths: string[] = [];
-      if (a.demo.htmlPath) paths.push(path.relative(repoRoot, a.demo.htmlPath));
-      if (a.demo.cssPath) paths.push(path.relative(repoRoot, a.demo.cssPath));
-      if (a.demo.jsPath) paths.push(path.relative(repoRoot, a.demo.jsPath));
-      return paths;
-    });
+    const wireframePathSet = new Set<string>();
+    for (const a of allArtifacts) {
+      if (a.demo.htmlPath) wireframePathSet.add(path.relative(repoRoot, a.demo.htmlPath));
+      if (a.demo.cssPath) wireframePathSet.add(path.relative(repoRoot, a.demo.cssPath));
+      if (a.demo.jsPath) wireframePathSet.add(path.relative(repoRoot, a.demo.jsPath));
+    }
+    const wireframeArtifactPaths = Array.from(wireframePathSet);
 
     const diff = await collectDiff({
       token: githubToken,
@@ -169,10 +171,24 @@ async function run(): Promise<void> {
       sourceChanged: diff.relevantFiles.length > 0,
       wireframeChanged: diff.wireframeFiles.length > 0,
     };
-    const results = await analyzeAll(client, allArtifacts, diff.formattedDiff, scenarioFlags, validationResults);
+    const results = await analyzeAll(client, allArtifacts, diff.formattedDiff, scenarioFlags, validationResults, maxPromptTokens);
+
+    // ── Push suggestion PR if changes proposed ─────────────────────
+    let suggestionPrUrl: string | null = null;
+    const hasReplacements = results.some(r =>
+      r.needsUpdate && r.changes?.some(c => c.replacements && c.replacements.length > 0)
+    );
+
+    if (hasReplacements) {
+      const suggestionResult = await pushSuggestions(githubToken, results);
+      suggestionPrUrl = suggestionResult.prUrl;
+      if (suggestionResult.error) {
+        core.warning(`Suggestion PR creation failed: ${suggestionResult.error}`);
+      }
+    }
 
     // ── Post comment ───────────────────────────────────────────────
-    const commentBody = formatComment(results, validationResults);
+    const commentBody = formatComment(results, validationResults, suggestionPrUrl);
     await postComment(githubToken, commentBody);
 
     core.info('Wireframe review comment posted.');

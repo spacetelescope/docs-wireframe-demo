@@ -11,7 +11,7 @@ const COMMENT_MARKER = '<!-- wireframe-review-bot -->';
 /**
  * Format the analysis results into a PR comment body.
  */
-export function formatComment(results: AnalysisResult[], validationResults?: ValidationResult[]): string {
+export function formatComment(results: AnalysisResult[], validationResults?: ValidationResult[], suggestionPrUrl?: string | null): string {
   const parts: string[] = [COMMENT_MARKER];
   parts.push('## 🖼️ Wireframe Demo Review\n');
 
@@ -80,6 +80,10 @@ export function formatComment(results: AnalysisResult[], validationResults?: Val
   }
 
   parts.push('\n---\n*Automated by [docs-wireframe-demo](https://github.com/spacetelescope/docs-wireframe-demo) wireframe review action*');
+
+  if (suggestionPrUrl) {
+    parts.push(`\n\n> 🔀 **Suggested changes have been pushed to a branch:** ${suggestionPrUrl}\n> Review and merge the suggestion PR into this branch if the changes look correct.`);
+  }
 
   return parts.join('\n');
 }

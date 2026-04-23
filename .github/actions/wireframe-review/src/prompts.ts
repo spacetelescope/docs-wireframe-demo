@@ -67,7 +67,13 @@ Respond with ONLY a JSON object (no markdown fences, no explanation outside the 
     {
       "file": "path/to/file.html",
       "description": "What to change and why",
-      "diff": "unified diff showing the change"
+      "diff": "unified diff showing the change",
+      "replacements": [
+        {
+          "search": "exact text to find in the current file",
+          "replace": "replacement text"
+        }
+      ]
     }
   ]
 }
@@ -75,16 +81,31 @@ Respond with ONLY a JSON object (no markdown fences, no explanation outside the 
 If needsUpdate is false, set changes to null.
 If needsUpdate is true, provide specific, actionable changes with real diffs.
 For the diff field, use unified diff format (--- a/file, +++ b/file, @@ line numbers @@).
+For the replacements field, provide search/replace pairs where "search" is the EXACT text to find in the current file and "replace" is the full replacement. Each replacement must match a unique location in the file. Include enough context in the search string to be unambiguous.
 Keep wireframe changes consistent with the simplified, mockup style of the existing wireframe.`;
+
+/** Rough token estimation: ~4 chars per token for English/code text */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/** Truncate text to fit within a token budget, adding a notice if truncated */
+function truncateToTokenBudget(text: string, maxTokens: number, label: string): string {
+  const maxChars = maxTokens * 4;
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars) + `\n\n... (${label} truncated to fit token budget) ...`;
+}
 
 /**
  * Build the analysis prompt for a single wireframe demo.
+ * Applies a token budget to ensure the prompt fits within LLM limits.
  */
 export function buildAnalysisPrompt(
   artifacts: DemoArtifacts,
   formattedDiff: string,
   options: { sourceChanged: boolean; wireframeChanged: boolean },
   validationResults?: ValidationResult[],
+  maxPromptTokens: number = 100000,
 ): Message[] {
   const messages: Message[] = [
     { role: 'system', content: SYSTEM_PROMPT },
@@ -120,7 +141,18 @@ export function buildAnalysisPrompt(
     parts.push(`## Current Step Definitions\n\`\`\`json\n${artifacts.stepsContent}\n\`\`\`\n`);
   }
 
-  parts.push(`## Pull Request Diff\n\`\`\`diff\n${formattedDiff}\n\`\`\`\n`);
+  // Apply token budget: system prompt + wireframe content takes priority, diff is trimmed first
+  const systemTokens = estimateTokens(SYSTEM_PROMPT);
+  const contentSoFar = parts.join('\n');
+  const contentTokens = estimateTokens(contentSoFar);
+  const responseReserve = 2000; // reserve tokens for the LLM response
+  const remainingForDiff = maxPromptTokens - systemTokens - contentTokens - responseReserve;
+
+  const trimmedDiff = remainingForDiff > 500
+    ? truncateToTokenBudget(formattedDiff, remainingForDiff, 'diff')
+    : '(diff omitted — prompt too large)';
+
+  parts.push(`## Pull Request Diff\n\`\`\`diff\n${trimmedDiff}\n\`\`\`\n`);
 
   // Include deterministic validation results if there are issues
   if (validationResults) {

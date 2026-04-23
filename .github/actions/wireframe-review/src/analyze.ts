@@ -8,10 +8,16 @@ import { LLMClient } from './llm';
 import { buildAnalysisPrompt } from './prompts';
 import { ValidationResult } from './validate';
 
+export interface FileReplacement {
+  search: string;
+  replace: string;
+}
+
 export interface FileChange {
   file: string;
   description: string;
   diff: string;
+  replacements?: FileReplacement[];
 }
 
 export interface AnalysisResult {
@@ -41,10 +47,19 @@ function parseResponse(raw: string, label: string): Omit<AnalysisResult, 'label'
 
   const parsed = JSON.parse(cleaned);
 
+  const changes: FileChange[] | null = parsed.changes
+    ? (parsed.changes as FileChange[]).map(c => ({
+        file: c.file,
+        description: c.description,
+        diff: c.diff || '',
+        replacements: Array.isArray(c.replacements) ? c.replacements : undefined,
+      }))
+    : null;
+
   return {
     needsUpdate: Boolean(parsed.needsUpdate),
     summary: String(parsed.summary || ''),
-    changes: parsed.changes ? (parsed.changes as FileChange[]) : null,
+    changes,
   };
 }
 
@@ -57,11 +72,12 @@ async function analyzeOne(
   formattedDiff: string,
   scenarioFlags: { sourceChanged: boolean; wireframeChanged: boolean },
   validationResults?: ValidationResult[],
+  maxPromptTokens?: number,
 ): Promise<AnalysisResult> {
   const label = artifacts.label;
 
   try {
-    const messages = buildAnalysisPrompt(artifacts, formattedDiff, scenarioFlags, validationResults);
+    const messages = buildAnalysisPrompt(artifacts, formattedDiff, scenarioFlags, validationResults, maxPromptTokens);
     const response = await client.chat(messages);
 
     try {
@@ -109,12 +125,28 @@ export async function analyzeAll(
   client: LLMClient,
   allArtifacts: DemoArtifacts[],
   formattedDiff: string,
-  scenarioFlags: { sourceChanged: boolean; wireframeChanged: boolean },  validationResults?: ValidationResult[],): Promise<AnalysisResult[]> {
+  scenarioFlags: { sourceChanged: boolean; wireframeChanged: boolean },
+  validationResults?: ValidationResult[],
+  maxPromptTokens?: number,
+): Promise<AnalysisResult[]> {
+  // Deduplicate by htmlPath — many docs pages reference the same wireframe
+  const grouped = new Map<string, DemoArtifacts[]>();
+  for (const a of allArtifacts) {
+    const key = a.demo.htmlPath || a.label;
+    const group = grouped.get(key) || [];
+    group.push(a);
+    grouped.set(key, group);
+  }
+
+  core.info(`${allArtifacts.length} demo(s) map to ${grouped.size} unique wireframe(s)`);
+
   const results: AnalysisResult[] = [];
 
-  for (const artifacts of allArtifacts) {
-    core.info(`Analyzing wireframe: ${artifacts.label}`);
-    const result = await analyzeOne(client, artifacts, formattedDiff, scenarioFlags);
+  for (const [, group] of grouped) {
+    // Use the first artifact as representative; merge step definitions from all
+    const representative = mergeGroupArtifacts(group);
+    core.info(`Analyzing wireframe: ${representative.label}`);
+    const result = await analyzeOne(client, representative, formattedDiff, scenarioFlags, validationResults, maxPromptTokens);
     results.push(result);
 
     if (result.error) {
@@ -127,4 +159,36 @@ export async function analyzeAll(
   }
 
   return results;
+}
+
+/**
+ * Merge a group of artifacts that share the same wireframe HTML.
+ * Combines step definitions from all demos so the LLM sees all
+ * step variations in one request.
+ */
+function mergeGroupArtifacts(group: DemoArtifacts[]): DemoArtifacts {
+  if (group.length === 1) return group[0];
+
+  const first = group[0];
+
+  // Collect unique step definitions
+  const allSteps = new Set<string>();
+  for (const a of group) {
+    if (a.stepsContent) allSteps.add(a.stepsContent);
+  }
+
+  const mergedSteps = allSteps.size > 0
+    ? Array.from(allSteps).join('\n\n--- (steps from another page) ---\n\n')
+    : null;
+
+  const sources = group.map(a => a.demo.sourceFile).join(', ');
+  const htmlBase = first.demo.htmlPath
+    ? require('path').basename(first.demo.htmlPath)
+    : 'unknown';
+
+  return {
+    ...first,
+    stepsContent: mergedSteps,
+    label: `${htmlBase} (referenced by ${group.length} pages: ${sources})`,
+  };
 }

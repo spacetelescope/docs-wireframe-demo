@@ -30261,19 +30261,27 @@ function parseResponse(raw, label) {
         cleaned = fenceMatch[1].trim();
     }
     const parsed = JSON.parse(cleaned);
+    const changes = parsed.changes
+        ? parsed.changes.map(c => ({
+            file: c.file,
+            description: c.description,
+            diff: c.diff || '',
+            replacements: Array.isArray(c.replacements) ? c.replacements : undefined,
+        }))
+        : null;
     return {
         needsUpdate: Boolean(parsed.needsUpdate),
         summary: String(parsed.summary || ''),
-        changes: parsed.changes ? parsed.changes : null,
+        changes,
     };
 }
 /**
  * Analyze a single wireframe demo against the PR diff.
  */
-async function analyzeOne(client, artifacts, formattedDiff, scenarioFlags, validationResults) {
+async function analyzeOne(client, artifacts, formattedDiff, scenarioFlags, validationResults, maxPromptTokens) {
     const label = artifacts.label;
     try {
-        const messages = (0, prompts_1.buildAnalysisPrompt)(artifacts, formattedDiff, scenarioFlags, validationResults);
+        const messages = (0, prompts_1.buildAnalysisPrompt)(artifacts, formattedDiff, scenarioFlags, validationResults, maxPromptTokens);
         const response = await client.chat(messages);
         try {
             const result = parseResponse(response, label);
@@ -30318,11 +30326,22 @@ async function analyzeOne(client, artifacts, formattedDiff, scenarioFlags, valid
 /**
  * Analyze all wireframe demos against the PR diff.
  */
-async function analyzeAll(client, allArtifacts, formattedDiff, scenarioFlags, validationResults) {
+async function analyzeAll(client, allArtifacts, formattedDiff, scenarioFlags, validationResults, maxPromptTokens) {
+    // Deduplicate by htmlPath — many docs pages reference the same wireframe
+    const grouped = new Map();
+    for (const a of allArtifacts) {
+        const key = a.demo.htmlPath || a.label;
+        const group = grouped.get(key) || [];
+        group.push(a);
+        grouped.set(key, group);
+    }
+    core.info(`${allArtifacts.length} demo(s) map to ${grouped.size} unique wireframe(s)`);
     const results = [];
-    for (const artifacts of allArtifacts) {
-        core.info(`Analyzing wireframe: ${artifacts.label}`);
-        const result = await analyzeOne(client, artifacts, formattedDiff, scenarioFlags);
+    for (const [, group] of grouped) {
+        // Use the first artifact as representative; merge step definitions from all
+        const representative = mergeGroupArtifacts(group);
+        core.info(`Analyzing wireframe: ${representative.label}`);
+        const result = await analyzeOne(client, representative, formattedDiff, scenarioFlags, validationResults, maxPromptTokens);
         results.push(result);
         if (result.error) {
             core.warning(`Analysis error for ${result.label}: ${result.error}`);
@@ -30335,6 +30354,34 @@ async function analyzeAll(client, allArtifacts, formattedDiff, scenarioFlags, va
         }
     }
     return results;
+}
+/**
+ * Merge a group of artifacts that share the same wireframe HTML.
+ * Combines step definitions from all demos so the LLM sees all
+ * step variations in one request.
+ */
+function mergeGroupArtifacts(group) {
+    if (group.length === 1)
+        return group[0];
+    const first = group[0];
+    // Collect unique step definitions
+    const allSteps = new Set();
+    for (const a of group) {
+        if (a.stepsContent)
+            allSteps.add(a.stepsContent);
+    }
+    const mergedSteps = allSteps.size > 0
+        ? Array.from(allSteps).join('\n\n--- (steps from another page) ---\n\n')
+        : null;
+    const sources = group.map(a => a.demo.sourceFile).join(', ');
+    const htmlBase = first.demo.htmlPath
+        ? (__nccwpck_require__(6928).basename)(first.demo.htmlPath)
+        : 'unknown';
+    return {
+        ...first,
+        stepsContent: mergedSteps,
+        label: `${htmlBase} (referenced by ${group.length} pages: ${sources})`,
+    };
 }
 
 
@@ -30480,7 +30527,7 @@ const COMMENT_MARKER = '<!-- wireframe-review-bot -->';
 /**
  * Format the analysis results into a PR comment body.
  */
-function formatComment(results, validationResults) {
+function formatComment(results, validationResults, suggestionPrUrl) {
     const parts = [COMMENT_MARKER];
     parts.push('## 🖼️ Wireframe Demo Review\n');
     // Show validation issues first (deterministic, always reliable)
@@ -30541,6 +30588,9 @@ function formatComment(results, validationResults) {
         parts.push('\n</details>\n');
     }
     parts.push('\n---\n*Automated by [docs-wireframe-demo](https://github.com/spacetelescope/docs-wireframe-demo) wireframe review action*');
+    if (suggestionPrUrl) {
+        parts.push(`\n\n> 🔀 **Suggested changes have been pushed to a branch:** ${suggestionPrUrl}\n> Review and merge the suggestion PR into this branch if the changes look correct.`);
+    }
     return parts.join('\n');
 }
 /**
@@ -31202,6 +31252,7 @@ const llm_1 = __nccwpck_require__(1908);
 const analyze_1 = __nccwpck_require__(2475);
 const comment_1 = __nccwpck_require__(2246);
 const validate_1 = __nccwpck_require__(397);
+const suggestions_1 = __nccwpck_require__(6462);
 async function run() {
     try {
         // ── Read inputs ────────────────────────────────────────────────
@@ -31212,6 +31263,7 @@ async function run() {
         const model = core.getInput('model') || '';
         const apiKey = core.getInput('api-key') || '';
         const maxDiffSize = parseInt(core.getInput('max-diff-size') || '50000', 10);
+        const maxPromptTokens = parseInt(core.getInput('max-prompt-tokens') || '100000', 10);
         const githubToken = process.env.GITHUB_TOKEN || '';
         if (!githubToken) {
             core.setFailed('GITHUB_TOKEN environment variable is required.');
@@ -31295,16 +31347,16 @@ async function run() {
             core.info('All step definitions pass validation against wireframe HTML.');
         }
         // ── Collect diff ───────────────────────────────────────────────
-        const wireframeArtifactPaths = allArtifacts.flatMap(a => {
-            const paths = [];
+        const wireframePathSet = new Set();
+        for (const a of allArtifacts) {
             if (a.demo.htmlPath)
-                paths.push(path.relative(repoRoot, a.demo.htmlPath));
+                wireframePathSet.add(path.relative(repoRoot, a.demo.htmlPath));
             if (a.demo.cssPath)
-                paths.push(path.relative(repoRoot, a.demo.cssPath));
+                wireframePathSet.add(path.relative(repoRoot, a.demo.cssPath));
             if (a.demo.jsPath)
-                paths.push(path.relative(repoRoot, a.demo.jsPath));
-            return paths;
-        });
+                wireframePathSet.add(path.relative(repoRoot, a.demo.jsPath));
+        }
+        const wireframeArtifactPaths = Array.from(wireframePathSet);
         const diff = await (0, diff_1.collectDiff)({
             token: githubToken,
             sourceRoot,
@@ -31333,9 +31385,19 @@ async function run() {
             sourceChanged: diff.relevantFiles.length > 0,
             wireframeChanged: diff.wireframeFiles.length > 0,
         };
-        const results = await (0, analyze_1.analyzeAll)(client, allArtifacts, diff.formattedDiff, scenarioFlags, validationResults);
+        const results = await (0, analyze_1.analyzeAll)(client, allArtifacts, diff.formattedDiff, scenarioFlags, validationResults, maxPromptTokens);
+        // ── Push suggestion PR if changes proposed ─────────────────────
+        let suggestionPrUrl = null;
+        const hasReplacements = results.some(r => r.needsUpdate && r.changes?.some(c => c.replacements && c.replacements.length > 0));
+        if (hasReplacements) {
+            const suggestionResult = await (0, suggestions_1.pushSuggestions)(githubToken, results);
+            suggestionPrUrl = suggestionResult.prUrl;
+            if (suggestionResult.error) {
+                core.warning(`Suggestion PR creation failed: ${suggestionResult.error}`);
+            }
+        }
         // ── Post comment ───────────────────────────────────────────────
-        const commentBody = (0, comment_1.formatComment)(results, validationResults);
+        const commentBody = (0, comment_1.formatComment)(results, validationResults, suggestionPrUrl);
         await (0, comment_1.postComment)(githubToken, commentBody);
         core.info('Wireframe review comment posted.');
         // Set outputs
@@ -31633,7 +31695,13 @@ Respond with ONLY a JSON object (no markdown fences, no explanation outside the 
     {
       "file": "path/to/file.html",
       "description": "What to change and why",
-      "diff": "unified diff showing the change"
+      "diff": "unified diff showing the change",
+      "replacements": [
+        {
+          "search": "exact text to find in the current file",
+          "replace": "replacement text"
+        }
+      ]
     }
   ]
 }
@@ -31641,11 +31709,24 @@ Respond with ONLY a JSON object (no markdown fences, no explanation outside the 
 If needsUpdate is false, set changes to null.
 If needsUpdate is true, provide specific, actionable changes with real diffs.
 For the diff field, use unified diff format (--- a/file, +++ b/file, @@ line numbers @@).
+For the replacements field, provide search/replace pairs where "search" is the EXACT text to find in the current file and "replace" is the full replacement. Each replacement must match a unique location in the file. Include enough context in the search string to be unambiguous.
 Keep wireframe changes consistent with the simplified, mockup style of the existing wireframe.`;
+/** Rough token estimation: ~4 chars per token for English/code text */
+function estimateTokens(text) {
+    return Math.ceil(text.length / 4);
+}
+/** Truncate text to fit within a token budget, adding a notice if truncated */
+function truncateToTokenBudget(text, maxTokens, label) {
+    const maxChars = maxTokens * 4;
+    if (text.length <= maxChars)
+        return text;
+    return text.slice(0, maxChars) + `\n\n... (${label} truncated to fit token budget) ...`;
+}
 /**
  * Build the analysis prompt for a single wireframe demo.
+ * Applies a token budget to ensure the prompt fits within LLM limits.
  */
-function buildAnalysisPrompt(artifacts, formattedDiff, options, validationResults) {
+function buildAnalysisPrompt(artifacts, formattedDiff, options, validationResults, maxPromptTokens = 100000) {
     const messages = [
         { role: 'system', content: SYSTEM_PROMPT },
     ];
@@ -31674,7 +31755,16 @@ function buildAnalysisPrompt(artifacts, formattedDiff, options, validationResult
     if (artifacts.stepsContent) {
         parts.push(`## Current Step Definitions\n\`\`\`json\n${artifacts.stepsContent}\n\`\`\`\n`);
     }
-    parts.push(`## Pull Request Diff\n\`\`\`diff\n${formattedDiff}\n\`\`\`\n`);
+    // Apply token budget: system prompt + wireframe content takes priority, diff is trimmed first
+    const systemTokens = estimateTokens(SYSTEM_PROMPT);
+    const contentSoFar = parts.join('\n');
+    const contentTokens = estimateTokens(contentSoFar);
+    const responseReserve = 2000; // reserve tokens for the LLM response
+    const remainingForDiff = maxPromptTokens - systemTokens - contentTokens - responseReserve;
+    const trimmedDiff = remainingForDiff > 500
+        ? truncateToTokenBudget(formattedDiff, remainingForDiff, 'diff')
+        : '(diff omitted — prompt too large)';
+    parts.push(`## Pull Request Diff\n\`\`\`diff\n${trimmedDiff}\n\`\`\`\n`);
     // Include deterministic validation results if there are issues
     if (validationResults) {
         const validationSection = (0, validate_1.formatValidationForPrompt)(validationResults);
@@ -31685,6 +31775,234 @@ function buildAnalysisPrompt(artifacts, formattedDiff, options, validationResult
     parts.push(`Analyze whether this PR diff requires any updates to the wireframe demo above. Remember to respond with ONLY a JSON object.`);
     messages.push({ role: 'user', content: parts.join('\n') });
     return messages;
+}
+
+
+/***/ }),
+
+/***/ 6462:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+/**
+ * Push suggested wireframe changes to a new branch and open a PR
+ * targeting the original PR branch.
+ */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.pushSuggestions = pushSuggestions;
+const core = __importStar(__nccwpck_require__(7484));
+const github = __importStar(__nccwpck_require__(3228));
+/**
+ * Apply suggested changes by creating a branch and opening a PR.
+ *
+ * For each file change that includes `replacements`, reads the current
+ * file content from the PR branch, applies the search/replace pairs,
+ * and commits the result to a new branch.
+ */
+async function pushSuggestions(token, results) {
+    const octokit = github.getOctokit(token);
+    const { owner, repo } = github.context.repo;
+    const pr = github.context.payload.pull_request;
+    if (!pr) {
+        return { prUrl: null, branch: null, error: 'Not a pull_request event' };
+    }
+    const prNumber = pr.number;
+    const prHeadRef = pr.head.ref;
+    const prHeadSha = pr.head.sha;
+    // Collect all file changes with replacements
+    const changesWithReplacements = results
+        .filter(r => r.needsUpdate && r.changes)
+        .flatMap(r => r.changes)
+        .filter(c => c.replacements && c.replacements.length > 0);
+    if (changesWithReplacements.length === 0) {
+        core.info('No actionable replacements from LLM — skipping suggestion PR.');
+        return { prUrl: null, branch: null, error: null };
+    }
+    const suggestionBranch = `wireframe-suggestions/pr-${prNumber}`;
+    try {
+        // Create the suggestion branch from the PR head
+        try {
+            await octokit.rest.git.createRef({
+                owner,
+                repo,
+                ref: `refs/heads/${suggestionBranch}`,
+                sha: prHeadSha,
+            });
+        }
+        catch (err) {
+            // Branch may already exist from a previous run — update it
+            const errMsg = err instanceof Error ? err.message : String(err);
+            if (errMsg.includes('Reference already exists')) {
+                await octokit.rest.git.updateRef({
+                    owner,
+                    repo,
+                    ref: `heads/${suggestionBranch}`,
+                    sha: prHeadSha,
+                    force: true,
+                });
+            }
+            else {
+                throw err;
+            }
+        }
+        // Group changes by file to batch replacements
+        const fileChanges = new Map();
+        for (const change of changesWithReplacements) {
+            const existing = fileChanges.get(change.file) || [];
+            existing.push(...change.replacements);
+            fileChanges.set(change.file, existing);
+        }
+        // Apply changes to each file
+        const treeEntries = [];
+        for (const [filePath, replacements] of fileChanges) {
+            // Get current file content from the PR branch
+            let content;
+            try {
+                const { data } = await octokit.rest.repos.getContent({
+                    owner,
+                    repo,
+                    path: filePath,
+                    ref: prHeadSha,
+                });
+                if ('content' in data && data.encoding === 'base64') {
+                    content = Buffer.from(data.content, 'base64').toString('utf-8');
+                }
+                else {
+                    core.warning(`Could not read ${filePath} — skipping`);
+                    continue;
+                }
+            }
+            catch {
+                core.warning(`File ${filePath} not found on PR branch — skipping`);
+                continue;
+            }
+            // Apply each replacement
+            let modified = content;
+            let appliedCount = 0;
+            for (const { search, replace } of replacements) {
+                if (modified.includes(search)) {
+                    modified = modified.replace(search, replace);
+                    appliedCount++;
+                }
+                else {
+                    core.warning(`Replacement search text not found in ${filePath} — skipping one replacement`);
+                }
+            }
+            if (appliedCount === 0 || modified === content) {
+                core.info(`No replacements applied to ${filePath} — skipping`);
+                continue;
+            }
+            // Create a blob for the modified content
+            const { data: blob } = await octokit.rest.git.createBlob({
+                owner,
+                repo,
+                content: Buffer.from(modified).toString('base64'),
+                encoding: 'base64',
+            });
+            treeEntries.push({
+                path: filePath,
+                mode: '100644',
+                type: 'blob',
+                sha: blob.sha,
+            });
+        }
+        if (treeEntries.length === 0) {
+            core.info('No replacements could be applied — skipping suggestion PR.');
+            // Clean up the branch
+            try {
+                await octokit.rest.git.deleteRef({ owner, repo, ref: `heads/${suggestionBranch}` });
+            }
+            catch { /* ignore */ }
+            return { prUrl: null, branch: null, error: null };
+        }
+        // Create a tree with the modified files
+        const { data: tree } = await octokit.rest.git.createTree({
+            owner,
+            repo,
+            base_tree: prHeadSha,
+            tree: treeEntries,
+        });
+        // Create a commit
+        const { data: commit } = await octokit.rest.git.createCommit({
+            owner,
+            repo,
+            message: `wireframe-review: suggested updates for PR #${prNumber}`,
+            tree: tree.sha,
+            parents: [prHeadSha],
+        });
+        // Update the suggestion branch to the new commit
+        await octokit.rest.git.updateRef({
+            owner,
+            repo,
+            ref: `heads/${suggestionBranch}`,
+            sha: commit.sha,
+        });
+        // Create or update the suggestion PR
+        let prUrl;
+        const existingPRs = await octokit.rest.pulls.list({
+            owner,
+            repo,
+            head: `${owner}:${suggestionBranch}`,
+            base: prHeadRef,
+            state: 'open',
+        });
+        if (existingPRs.data.length > 0) {
+            prUrl = existingPRs.data[0].html_url;
+            core.info(`Updated existing suggestion PR: ${prUrl}`);
+        }
+        else {
+            const { data: newPR } = await octokit.rest.pulls.create({
+                owner,
+                repo,
+                title: `🖼️ Wireframe updates for PR #${prNumber}`,
+                body: `Automated wireframe update suggestions for #${prNumber}.\n\nGenerated by the wireframe-review action. Review and merge into \`${prHeadRef}\` if the changes look correct.`,
+                head: suggestionBranch,
+                base: prHeadRef,
+            });
+            prUrl = newPR.html_url;
+            core.info(`Created suggestion PR: ${prUrl}`);
+        }
+        return { prUrl, branch: suggestionBranch, error: null };
+    }
+    catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        core.warning(`Failed to create suggestion PR: ${errorMsg}`);
+        return { prUrl: null, branch: null, error: errorMsg };
+    }
 }
 
 
