@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  /* ── App shell ─────────────────────────────────────────────────── */
+
+  .mast-app {
+    background: #fff;
+    color: #212121;
+    min-height: 520px;
+    display: flex;
+    flex-direction: column;
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+    font-size: 13px;
+  }
+
+  /* ── App bar ───────────────────────────────────────────────────── */
+
+  .mast-appbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px;
+    background: #fff;
+    border-bottom: 1px solid #e0e0e0;
+    min-height: 48px;
+    flex-shrink: 0;
+  }
+
+  .mast-logo {
+    height: 32px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+    font-size: 15px;
+    color: #00617e;
+    margin-right: 4px;
+  }
+
+  .mast-logo .logo-icon {
+    width: 28px;
+    height: 28px;
+    background: #00617e;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .mast-mission-label {
+    font-size: 15px;
+    font-weight: 700;
+    color: #212121;
+    padding: 4px 0;
+  }
+
+  .mast-nav {
+    margin-left: auto;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .mast-nav-link {
+    background: none;
+    border: none;
+    color: #00617e;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  .mast-nav-link:hover {
+    background: rgba(0, 97, 126, 0.08);
+  }
+
+  /* ── Banner ────────────────────────────────────────────────────── */
+
+  .mast-banner {
+    background: #b4dbe8;
+    color: #212121;
+    padding: 10px 16px;
+    font-size: 12px;
+    line-height: 1.5;
+    border-bottom: 1px solid #8ecadb;
+  }
+
+  .mast-banner a {
+    color: #00617e;
+    text-decoration: underline;
+  }
+
+  /* ── Search form container ─────────────────────────────────────── */
+
+  .mast-form {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 24px 80px;
+  }
+
+  /* ── Form sections ─────────────────────────────────────────────── */
+
+  .mast-section {
+    margin-bottom: 20px;
+  }
+
+  .mast-section-label {
+    font-size: 11px;
+    color: #666;
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+
+  /* ── Object search row ─────────────────────────────────────────── */
+
+  .mast-object-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+
+  .mast-object-input-group {
+    flex: 1;
+    min-width: 200px;
+  }
+
+  /* ── Form fields ───────────────────────────────────────────────── */
+
+  .mast-field {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .mast-field label {
+    font-size: 11px;
+    color: #00617e;
+    font-weight: 500;
+  }
+
+  .mast-field input[type="text"],
+  .mast-field input[type="number"],
+  .mast-field select,
+  .mast-field textarea {
+    width: 100%;
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.38);
+    color: #212121;
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  .mast-field input:focus,
+  .mast-field select:focus,
+  .mast-field textarea:focus {
+    border-color: #00617e;
+    border-width: 2px;
+    padding: 7px 9px;
+  }
+
+  .mast-field textarea {
+    min-height: 48px;
+    resize: vertical;
+  }
+
+  .mast-field select {
+    appearance: auto;
+  }
+
+  /* ── Form grid rows ────────────────────────────────────────────── */
+
+  .mast-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+
+  .mast-row > * {
+    flex: 1;
+    min-width: 120px;
+  }
+
+  .mast-row-half {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 12px;
+  }
+
+  /* ── Toggle button group ───────────────────────────────────────── */
+
+  .mast-toggle-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .mast-toggle-btn {
+    background: #fff;
+    border: none;
+    border-right: 1px solid rgba(0, 0, 0, 0.12);
+    color: #212121;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    position: relative;
+    font-family: inherit;
+  }
+
+  .mast-toggle-btn:last-child {
+    border-right: none;
+  }
+
+  .mast-toggle-btn:hover {
+    background: #f5f5f5;
+  }
+
+  .mast-toggle-btn.active {
+    background: #e8f4f8;
+    color: #00617e;
+    font-weight: 600;
+  }
+
+  .mast-toggle-btn.active::before {
+    content: "✓ ";
+    font-size: 11px;
+  }
+
+  .mast-toggle-btn.inactive {
+    background: #fff;
+    color: #212121;
+    font-weight: 500;
+  }
+
+  .mast-toggle-btn.inactive::before {
+    content: "";
+  }
+
+  /* ── Buttons ───────────────────────────────────────────────────── */
+
+  .mast-btn {
+    background: #e0e0e0;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    color: #212121;
+    border-radius: 4px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+
+  .mast-btn:hover {
+    background: #d0d0d0;
+  }
+
+  .mast-btn-primary {
+    background: #00617e;
+    color: #fff;
+    border-color: #00617e;
+  }
+
+  .mast-btn-primary:hover {
+    background: #004d64;
+  }
+
+  .mast-btn-resolve {
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.38);
+    padding: 8px 14px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+  }
+
+  .mast-btn-resolve::before {
+    content: "✓";
+    font-size: 14px;
+    color: #00617e;
+  }
+
+  /* ── Date range ────────────────────────────────────────────────── */
+
+  .mast-date-range {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+  }
+
+  .mast-date-range .mast-field {
+    flex: 1;
+  }
+
+  .mast-date-sep {
+    padding-bottom: 8px;
+    font-size: 12px;
+    color: #666;
+    flex-shrink: 0;
+  }
+
+  /* ── Conditions section ────────────────────────────────────────── */
+
+  .mast-conditions-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    margin-bottom: 8px;
+  }
+
+  .mast-conditions-row .mast-field {
+    flex: 1;
+  }
+
+  .mast-btn-icon {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+
+  /* ── Output columns chips ──────────────────────────────────────── */
+
+  .mast-chips-container {
+    border: 1px solid rgba(0, 0, 0, 0.38);
+    border-radius: 4px;
+    padding: 8px;
+    min-height: 40px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .mast-chip {
+    background: #e8f4f8;
+    color: #00617e;
+    border: none;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: default;
+    font-family: inherit;
+  }
+
+  .mast-chip .chip-close {
+    font-size: 10px;
+    cursor: pointer;
+    opacity: 0.6;
+  }
+
+  /* ── Sticky footer ─────────────────────────────────────────────── */
+
+  .mast-footer {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border-top: 1px solid #e0e0e0;
+    padding: 10px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 10;
+  }
+
+  .mast-footer-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .mast-footer-actions .mast-btn-search {
+    flex: 1;
+    background: #00617e;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 10px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+
+  .mast-footer-actions .mast-btn-search:hover {
+    background: #004d64;
+  }
+
+  .mast-footer-status {
+    text-align: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #212121;
+  }
+
+  .mast-footer-status span {
+    color: #00617e;
+  }
+
+  /* ── Divider ───────────────────────────────────────────────────── */
+
+  .mast-divider {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 16px 0;
+  }
+
+  /* ── Results table (hidden by default) ─────────────────────────── */
+
+  .mast-results {
+    display: none;
+    margin-top: 16px;
+  }
+
+  .mast-results.visible {
+    display: block;
+  }
+
+  .mast-results-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  .mast-results-table th {
+    background: #00617e;
+    color: #fff;
+    padding: 6px 10px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .mast-results-table td {
+    padding: 5px 10px;
+    border-bottom: 1px solid #e0e0e0;
+    white-space: nowrap;
+  }
+
+  .mast-results-table tr:nth-child(even) {
+    background: #f9f9f9;
+  }
+
+  .mast-results-table tr:hover {
+    background: #e8f4f8;
+  }
+
+  /* ── Toast notification ────────────────────────────────────────── */
+
+  .mast-toast {
+    position: absolute;
+    top: 56px;
+    right: 16px;
+    background: #00617e;
+    color: #fff;
+    padding: 10px 16px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    opacity: 0;
+    transform: translateY(-8px);
+    transition: opacity 0.3s, transform 0.3s;
+    pointer-events: none;
+    z-index: 100;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  }
+
+  .mast-toast.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+</style>
+</head>
+<body>
+<div class="mast-app">
+
+  <!-- App bar -->
+  <div class="mast-appbar" id="mast-appbar">
+    <div class="mast-logo">
+      <span class="logo-icon">M</span>
+      <span>MAST</span>
+    </div>
+    <span class="mast-mission-label" id="mission-label">JWST</span>
+    <nav class="mast-nav">
+      <button class="mast-nav-link" id="nav-api">API</button>
+      <button class="mast-nav-link" id="nav-help">HELP</button>
+      <button class="mast-nav-link" id="nav-about">ABOUT</button>
+      <button class="mast-nav-link" id="nav-myst">MY ST</button>
+    </nav>
+  </div>
+
+  <!-- Welcome banner -->
+  <div class="mast-banner" id="mast-banner">
+    Welcome to the MAST JWST Search form. See the
+    <a href="#">Mission Search Guide</a> for help getting started.
+  </div>
+
+  <!-- Search form -->
+  <div class="mast-form" id="mast-form">
+
+    <!-- Object / position search -->
+    <div class="mast-section" id="section-object">
+      <div class="mast-object-row">
+        <div class="mast-object-input-group">
+          <div class="mast-field">
+            <label for="object-input">Object name(s) and/or RA and Dec pair(s)</label>
+            <textarea id="object-input" placeholder="e.g. M31, 10.684 41.269"></textarea>
+          </div>
+        </div>
+        <button class="mast-btn mast-btn-resolve" id="resolve-btn" title="Resolve object names">RESOLVE</button>
+        <div class="mast-field" style="max-width: 140px;">
+          <label for="search-radius">Search radius</label>
+          <div style="display:flex;gap:4px;align-items:center;">
+            <input type="text" id="search-radius" value="3" style="width:60px;" />
+            <select id="radius-unit" style="width:auto;flex-shrink:0;">
+              <option value="arcminutes">arcmin</option>
+              <option value="arcseconds">arcsec</option>
+              <option value="degrees">deg</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Data Types & Instruments row -->
+    <div class="mast-row-half" id="section-types-instruments">
+      <!-- Data Types -->
+      <div class="mast-section" id="section-datatypes">
+        <div class="mast-field">
+          <label>Data Types=</label>
+          <div class="mast-toggle-group" id="datatype-group">
+            <button class="mast-toggle-btn active" id="dt-spectrum" data-value="spectrum">SPECTRUM</button>
+            <button class="mast-toggle-btn active" id="dt-image" data-value="image">IMAGE</button>
+            <button class="mast-toggle-btn active" id="dt-timeseries" data-value="timeseries">TIMESERIES</button>
+            <button class="mast-toggle-btn active" id="dt-other" data-value="other">OTHER</button>
+          </div>
+        </div>
+      </div>
+      <!-- Instruments -->
+      <div class="mast-section" id="section-instruments">
+        <div class="mast-field">
+          <label>Instruments=</label>
+          <div class="mast-toggle-group" id="instrument-group">
+            <button class="mast-toggle-btn active" id="inst-miri" data-value="MIRI">MIRI</button>
+            <button class="mast-toggle-btn active" id="inst-nircam" data-value="NIRCAM">NIRCAM</button>
+            <button class="mast-toggle-btn active" id="inst-nirspec" data-value="NIRSPEC">NIRSPEC</button>
+            <button class="mast-toggle-btn active" id="inst-niriss" data-value="NIRISS">NIRISS</button>
+            <button class="mast-toggle-btn active" id="inst-fgs" data-value="FGS">FGS</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Exposure / Exp Type / Optical Element row -->
+    <div class="mast-row" id="section-exposure">
+      <div class="mast-field" style="max-width:160px;">
+        <label for="exposure-time">Exposure Time=</label>
+        <input type="text" id="exposure-time" placeholder="" />
+      </div>
+      <div class="mast-field" style="max-width:180px;">
+        <label for="exp-type">Exp Type=</label>
+        <select id="exp-type">
+          <option value="">-- select --</option>
+          <option value="MIR_IMAGE">MIR_IMAGE</option>
+          <option value="MIR_MRS">MIR_MRS</option>
+          <option value="MIR_LRS-FIXEDSLIT">MIR_LRS-FIXEDSLIT</option>
+          <option value="NRC_IMAGE">NRC_IMAGE</option>
+          <option value="NRC_GRISM">NRC_GRISM</option>
+          <option value="NRC_WFSS">NRC_WFSS</option>
+          <option value="NIS_IMAGE">NIS_IMAGE</option>
+          <option value="NIS_WFSS">NIS_WFSS</option>
+          <option value="NIS_SOSS">NIS_SOSS</option>
+          <option value="NRS_FIXEDSLIT">NRS_FIXEDSLIT</option>
+          <option value="NRS_IFU">NRS_IFU</option>
+          <option value="NRS_MSASPEC">NRS_MSASPEC</option>
+        </select>
+      </div>
+      <div class="mast-field">
+        <label for="optical-element">Optical Element=</label>
+        <input type="text" id="optical-element" placeholder="Filter, grating, pupil…" />
+      </div>
+    </div>
+
+    <!-- Dataset ID / PI row -->
+    <div class="mast-row" id="section-dataset">
+      <div class="mast-field" style="flex:2;">
+        <label for="dataset-id">Dataset Name=</label>
+        <input type="text" id="dataset-id" placeholder="e.g. jw02731002004_02101_00001" />
+      </div>
+      <div class="mast-field" style="flex:1;">
+        <label for="pi-surname">PI Surname=</label>
+        <input type="text" id="pi-surname" placeholder="" />
+      </div>
+    </div>
+
+    <!-- Program / Observation / Visit row -->
+    <div class="mast-row" id="section-program">
+      <div class="mast-field">
+        <label for="program-id">Program=</label>
+        <input type="text" id="program-id" placeholder="" />
+      </div>
+      <div class="mast-field">
+        <label for="obs-id">Observation=</label>
+        <input type="text" id="obs-id" placeholder="" disabled />
+      </div>
+      <div class="mast-field">
+        <label for="visit-id">Visit=</label>
+        <input type="text" id="visit-id" placeholder="" disabled />
+      </div>
+    </div>
+
+    <!-- Program Type / Cycle / Product Levels / Moving Target -->
+    <div class="mast-row" id="section-program-meta">
+      <div class="mast-field">
+        <label for="program-type">Program Type=</label>
+        <select id="program-type">
+          <option value="">-- select --</option>
+          <option value="GO">GO</option>
+          <option value="GTO">GTO</option>
+          <option value="ERS">ERS</option>
+          <option value="DD">DD</option>
+          <option value="CAL">CAL</option>
+          <option value="COM">COM</option>
+          <option value="AR">AR</option>
+        </select>
+      </div>
+      <div class="mast-field">
+        <label for="cycle">Cycle=</label>
+        <input type="text" id="cycle" placeholder="" />
+      </div>
+      <div class="mast-field">
+        <label for="product-levels">Product Levels=</label>
+        <select id="product-levels">
+          <option value="">-- select --</option>
+          <option value="1">Level 1</option>
+          <option value="2">Level 2</option>
+          <option value="3">Level 3</option>
+        </select>
+      </div>
+      <div class="mast-field" style="max-width:180px;align-self:flex-end;">
+        <button class="mast-btn" id="moving-target-btn" style="width:100%;">Moving Targets</button>
+      </div>
+    </div>
+
+    <hr class="mast-divider" />
+
+    <!-- Date ranges -->
+    <div class="mast-section" id="section-dates">
+      <div class="mast-row-half">
+        <div>
+          <div class="mast-section-label">Observation Start Date</div>
+          <div class="mast-date-range">
+            <div class="mast-field">
+              <label for="obs-date-from">From</label>
+              <input type="text" id="obs-date-from" placeholder="YYYY-MM-DD" />
+            </div>
+            <span class="mast-date-sep">to</span>
+            <div class="mast-field">
+              <label for="obs-date-to">To</label>
+              <input type="text" id="obs-date-to" placeholder="YYYY-MM-DD" />
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="mast-section-label">Release Date</div>
+          <div class="mast-date-range">
+            <div class="mast-field">
+              <label for="release-date-from">From</label>
+              <input type="text" id="release-date-from" placeholder="YYYY-MM-DD" />
+            </div>
+            <span class="mast-date-sep">to</span>
+            <div class="mast-field">
+              <label for="release-date-to">To</label>
+              <input type="text" id="release-date-to" placeholder="YYYY-MM-DD" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="mast-divider" />
+
+    <!-- Custom conditions -->
+    <div class="mast-section" id="section-conditions">
+      <div class="mast-section-label">Additional Conditions</div>
+      <div class="mast-conditions-row">
+        <div class="mast-field">
+          <label for="cond-col-0">Column Name=</label>
+          <select id="cond-col-0">
+            <option value="">-- select --</option>
+            <option value="target_name">Target Name</option>
+            <option value="targ_ra">RA</option>
+            <option value="targ_dec">Dec</option>
+            <option value="category">Category</option>
+          </select>
+        </div>
+        <div class="mast-field">
+          <label for="cond-val-0">Condition=</label>
+          <input type="text" id="cond-val-0" placeholder="" />
+        </div>
+        <button class="mast-btn mast-btn-icon" id="remove-condition-btn" title="Remove condition">✕</button>
+      </div>
+      <button class="mast-btn" id="add-condition-btn" style="width:auto;">
+        + Add Another Condition
+      </button>
+    </div>
+
+    <hr class="mast-divider" />
+
+    <!-- Output columns -->
+    <div class="mast-section" id="section-columns">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <div class="mast-section-label" style="margin-bottom:0;">Output columns</div>
+        <div style="display:flex;gap:4px;">
+          <button class="mast-btn" id="select-recc-cols" title="Select recommended" style="font-size:11px;padding:3px 8px;">★ Recommended</button>
+          <button class="mast-btn" id="select-all-cols" title="Select all" style="font-size:11px;padding:3px 8px;">☑ All</button>
+          <button class="mast-btn" id="select-no-cols" title="Deselect all" style="font-size:11px;padding:3px 8px;">☐ None</button>
+        </div>
+      </div>
+      <div class="mast-chips-container" id="output-columns-chips">
+        <span class="mast-chip">Ang Sep <span class="chip-close">✕</span></span>
+        <span class="mast-chip">Dataset <span class="chip-close">✕</span></span>
+        <span class="mast-chip">Dec (J2000) <span class="chip-close">✕</span></span>
+        <span class="mast-chip">Exp Time <span class="chip-close">✕</span></span>
+        <span class="mast-chip">Exp Type <span class="chip-close">✕</span></span>
+        <span class="mast-chip">Instrument <span class="chip-close">✕</span></span>
+        <span class="mast-chip">Optical Elements <span class="chip-close">✕</span></span>
+        <span class="mast-chip">PI Name <span class="chip-close">✕</span></span>
+        <span class="mast-chip">Program <span class="chip-close">✕</span></span>
+        <span class="mast-chip">RA (J2000) <span class="chip-close">✕</span></span>
+        <span class="mast-chip">Release Date <span class="chip-close">✕</span></span>
+        <span class="mast-chip">Start Time <span class="chip-close">✕</span></span>
+        <span class="mast-chip">Status <span class="chip-close">✕</span></span>
+        <span class="mast-chip">Target Name <span class="chip-close">✕</span></span>
+      </div>
+    </div>
+
+    <!-- Results table (initially hidden) -->
+    <div class="mast-results" id="results-section">
+      <table class="mast-results-table" id="results-table">
+        <thead>
+          <tr>
+            <th>Dataset</th>
+            <th>Target</th>
+            <th>RA</th>
+            <th>Dec</th>
+            <th>Instrument</th>
+            <th>Exp Type</th>
+            <th>Exp Time</th>
+            <th>Program</th>
+          </tr>
+        </thead>
+        <tbody id="results-tbody">
+          <tr>
+            <td>jw02731001001_02101_00001</td>
+            <td>NGC-1365</td>
+            <td>53.4015</td>
+            <td>-36.1404</td>
+            <td>NIRCAM</td>
+            <td>NRC_IMAGE</td>
+            <td>934.2</td>
+            <td>2731</td>
+          </tr>
+          <tr>
+            <td>jw02731001001_02101_00002</td>
+            <td>NGC-1365</td>
+            <td>53.4015</td>
+            <td>-36.1404</td>
+            <td>NIRCAM</td>
+            <td>NRC_IMAGE</td>
+            <td>934.2</td>
+            <td>2731</td>
+          </tr>
+          <tr>
+            <td>jw01328004001_02101_00001</td>
+            <td>NGC-7319</td>
+            <td>339.0146</td>
+            <td>33.9676</td>
+            <td>MIRI</td>
+            <td>MIR_MRS</td>
+            <td>444.0</td>
+            <td>1328</td>
+          </tr>
+          <tr>
+            <td>jw01328004001_02101_00002</td>
+            <td>NGC-7319</td>
+            <td>339.0146</td>
+            <td>33.9676</td>
+            <td>NIRSPEC</td>
+            <td>NRS_IFU</td>
+            <td>522.8</td>
+            <td>1328</td>
+          </tr>
+          <tr>
+            <td>jw02727005001_04101_00001</td>
+            <td>CARINA-NEBULA</td>
+            <td>161.2653</td>
+            <td>-59.5920</td>
+            <td>NIRCAM</td>
+            <td>NRC_IMAGE</td>
+            <td>1108.6</td>
+            <td>2727</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <!-- Sticky footer -->
+  <div class="mast-footer" id="mast-footer">
+    <div class="mast-footer-actions">
+      <button class="mast-btn" id="clear-form-btn">Clear Form</button>
+      <button class="mast-btn-search" id="search-btn">Search</button>
+      <button class="mast-btn" id="api-query-btn">Show API Query</button>
+    </div>
+    <div class="mast-footer-status" id="footer-status">
+      Filtered results: <span id="result-count">301,678</span> of 301,678
+    </div>
+  </div>
+
+  <!-- Toast notification (hidden by default) -->
+  <div class="mast-toast" id="mast-toast">Search submitted!</div>
+
+</div>
+</body>
+</html>

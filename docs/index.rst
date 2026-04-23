@@ -28,3 +28,4 @@ This package handles:
    styling
    standalone
    embedding
+   mast-jwst-demo
