@@ -90,6 +90,32 @@ The LLM understands the wireframe demo format, including built-in actions
 (``click``, ``toggle-class``, ``set-value``, etc.) and custom registered actions.
 
 
+Step Validation
+^^^^^^^^^^^^^^^^
+
+Before calling the LLM, the action runs **deterministic validation** of the
+step definitions against the wireframe HTML. This catches issues that don't
+require an LLM to detect:
+
+- **Selector checks**: Every CSS selector referenced in a step target (``#id``,
+  ``.class``, ``[data-attr]``) is checked against the wireframe HTML to verify
+  a matching element exists.
+
+- **Action checks**: Every action name used in steps is verified against the
+  list of built-in actions and any custom actions registered in the custom
+  actions JS file (detected via ``WireframeDemo.registerAction(...)`` calls).
+
+Validation issues are:
+
+1. **Reported in the PR comment** as a dedicated "Step/Selector Validation"
+   section, independent of the LLM analysis.
+2. **Included in the LLM prompt** so the model can propose fixes for the
+   mismatched selectors or unknown actions in its suggested changes.
+
+This means that even if the LLM is unavailable or produces a poor response,
+the deterministic validation will still flag broken step definitions.
+
+
 Inputs
 ------
 

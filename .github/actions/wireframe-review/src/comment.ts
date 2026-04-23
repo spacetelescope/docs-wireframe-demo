@@ -4,15 +4,31 @@
 
 import * as github from '@actions/github';
 import { AnalysisResult } from './analyze';
+import { ValidationResult } from './validate';
 
 const COMMENT_MARKER = '<!-- wireframe-review-bot -->';
 
 /**
  * Format the analysis results into a PR comment body.
  */
-export function formatComment(results: AnalysisResult[]): string {
+export function formatComment(results: AnalysisResult[], validationResults?: ValidationResult[]): string {
   const parts: string[] = [COMMENT_MARKER];
   parts.push('## 🖼️ Wireframe Demo Review\n');
+
+  // Show validation issues first (deterministic, always reliable)
+  const validationIssues = validationResults?.filter(r => !r.valid) ?? [];
+  if (validationIssues.length > 0) {
+    parts.push('### Step/Selector Validation\n');
+    for (const result of validationIssues) {
+      parts.push(`**${result.label}**:\n`);
+      for (const issue of result.issues) {
+        const icon = issue.severity === 'error' ? '❌' : '⚠️';
+        const stepRef = issue.step > 0 ? `Step ${issue.step}: ` : '';
+        parts.push(`- ${icon} ${stepRef}${issue.message}`);
+      }
+      parts.push('');
+    }
+  }
 
   const needsUpdate = results.filter(r => r.needsUpdate);
   const noUpdate = results.filter(r => !r.needsUpdate && !r.error);

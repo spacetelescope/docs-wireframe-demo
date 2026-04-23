@@ -14,6 +14,7 @@ import { collectDiff } from './diff';
 import { createLLMClient } from './llm';
 import { analyzeAll } from './analyze';
 import { formatComment, postComment } from './comment';
+import { validateDemo, ValidationResult } from './validate';
 
 interface ExplicitConfig {
   wireframes: Array<{
@@ -100,6 +101,21 @@ async function run(): Promise<void> {
 
     core.info(`Read artifacts for ${allArtifacts.length} demo(s)`);
 
+    // ── Validate steps against wireframe HTML ──────────────────────
+    const validationResults: ValidationResult[] = allArtifacts.map(a => validateDemo(a));
+    const validationIssues = validationResults.filter(r => !r.valid);
+    if (validationIssues.length > 0) {
+      core.warning(`Found ${validationIssues.reduce((n, r) => n + r.issues.length, 0)} validation issue(s) across ${validationIssues.length} demo(s)`);
+      for (const r of validationIssues) {
+        for (const issue of r.issues) {
+          const stepRef = issue.step > 0 ? `step ${issue.step}: ` : '';
+          core.warning(`  ${r.label} — ${stepRef}${issue.message}`);
+        }
+      }
+    } else {
+      core.info('All step definitions pass validation against wireframe HTML.');
+    }
+
     // ── Collect diff ───────────────────────────────────────────────
     const wireframeArtifactPaths = allArtifacts.flatMap(a => {
       const paths: string[] = [];
@@ -139,10 +155,10 @@ async function run(): Promise<void> {
       sourceChanged: diff.relevantFiles.length > 0,
       wireframeChanged: diff.wireframeFiles.length > 0,
     };
-    const results = await analyzeAll(client, allArtifacts, diff.formattedDiff, scenarioFlags);
+    const results = await analyzeAll(client, allArtifacts, diff.formattedDiff, scenarioFlags, validationResults);
 
     // ── Post comment ───────────────────────────────────────────────
-    const commentBody = formatComment(results);
+    const commentBody = formatComment(results, validationResults);
     await postComment(githubToken, commentBody);
 
     core.info('Wireframe review comment posted.');

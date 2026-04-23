@@ -4,6 +4,7 @@
 
 import { DemoArtifacts } from './artifacts';
 import { Message } from './llm';
+import { ValidationResult, formatValidationForPrompt } from './validate';
 
 const SYSTEM_PROMPT = `You are a wireframe demo review assistant. Your job is to analyze source code changes in a pull request and determine whether they affect any wireframe demos used in the project's documentation.
 
@@ -83,6 +84,7 @@ export function buildAnalysisPrompt(
   artifacts: DemoArtifacts,
   formattedDiff: string,
   options: { sourceChanged: boolean; wireframeChanged: boolean },
+  validationResults?: ValidationResult[],
 ): Message[] {
   const messages: Message[] = [
     { role: 'system', content: SYSTEM_PROMPT },
@@ -102,8 +104,6 @@ export function buildAnalysisPrompt(
     parts.push(`> **Scenario**: Both source code and wireframe artifacts were changed. Verify the wireframe updates are sufficient for the source changes.\n`);
   }
 
-  parts.push(`# Wireframe Demo: ${artifacts.label}\n`);
-
   if (artifacts.htmlContent) {
     parts.push(`## Current Wireframe HTML\n\`\`\`html\n${artifacts.htmlContent}\n\`\`\`\n`);
   }
@@ -121,6 +121,14 @@ export function buildAnalysisPrompt(
   }
 
   parts.push(`## Pull Request Diff\n\`\`\`diff\n${formattedDiff}\n\`\`\`\n`);
+
+  // Include deterministic validation results if there are issues
+  if (validationResults) {
+    const validationSection = formatValidationForPrompt(validationResults);
+    if (validationSection) {
+      parts.push(validationSection);
+    }
+  }
 
   parts.push(`Analyze whether this PR diff requires any updates to the wireframe demo above. Remember to respond with ONLY a JSON object.`);
 

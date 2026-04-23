@@ -6,6 +6,7 @@ import * as core from '@actions/core';
 import { DemoArtifacts } from './artifacts';
 import { LLMClient } from './llm';
 import { buildAnalysisPrompt } from './prompts';
+import { ValidationResult } from './validate';
 
 export interface FileChange {
   file: string;
@@ -55,11 +56,12 @@ async function analyzeOne(
   artifacts: DemoArtifacts,
   formattedDiff: string,
   scenarioFlags: { sourceChanged: boolean; wireframeChanged: boolean },
+  validationResults?: ValidationResult[],
 ): Promise<AnalysisResult> {
   const label = artifacts.label;
 
   try {
-    const messages = buildAnalysisPrompt(artifacts, formattedDiff, scenarioFlags);
+    const messages = buildAnalysisPrompt(artifacts, formattedDiff, scenarioFlags, validationResults);
     const response = await client.chat(messages);
 
     try {
@@ -107,8 +109,7 @@ export async function analyzeAll(
   client: LLMClient,
   allArtifacts: DemoArtifacts[],
   formattedDiff: string,
-  scenarioFlags: { sourceChanged: boolean; wireframeChanged: boolean },
-): Promise<AnalysisResult[]> {
+  scenarioFlags: { sourceChanged: boolean; wireframeChanged: boolean },  validationResults?: ValidationResult[],): Promise<AnalysisResult[]> {
   const results: AnalysisResult[] = [];
 
   for (const artifacts of allArtifacts) {
