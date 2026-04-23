@@ -31229,11 +31229,25 @@ async function run() {
             const watches = [];
             for (const entry of config.wireframes || []) {
                 const htmlPath = path.resolve(repoRoot, entry.html);
+                if (!htmlPath.startsWith(repoRoot + path.sep) && htmlPath !== repoRoot) {
+                    core.warning(`Skipping wireframe with path outside repo root: ${entry.html}`);
+                    continue;
+                }
+                const cssResolved = entry.css ? path.resolve(repoRoot, entry.css) : null;
+                if (cssResolved && !cssResolved.startsWith(repoRoot + path.sep)) {
+                    core.warning(`Skipping CSS path outside repo root: ${entry.css}`);
+                    continue;
+                }
+                const jsResolved = entry['actions-js'] ? path.resolve(repoRoot, entry['actions-js']) : null;
+                if (jsResolved && !jsResolved.startsWith(repoRoot + path.sep)) {
+                    core.warning(`Skipping JS path outside repo root: ${entry['actions-js']}`);
+                    continue;
+                }
                 demos.push({
                     sourceFile: configPath,
                     htmlPath: fs.existsSync(htmlPath) ? htmlPath : null,
-                    cssPath: entry.css ? path.resolve(repoRoot, entry.css) : null,
-                    jsPath: entry['actions-js'] ? path.resolve(repoRoot, entry['actions-js']) : null,
+                    cssPath: cssResolved,
+                    jsPath: jsResolved,
                     steps: null,
                     rawConfig: entry.context || null,
                     type: 'html-attribute',
@@ -31506,7 +31520,7 @@ async function fetchWithRetry(url, init, maxRetries = 3) {
             if (response.status === 429 || response.status >= 500) {
                 const retryAfter = response.headers.get('retry-after');
                 const delay = retryAfter
-                    ? parseInt(retryAfter, 10) * 1000
+                    ? Math.min(parseInt(retryAfter, 10) * 1000, 60000)
                     : Math.min(1000 * Math.pow(2, attempt), 30000);
                 core.warning(`LLM API returned ${response.status}, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
                 await new Promise(resolve => setTimeout(resolve, delay));

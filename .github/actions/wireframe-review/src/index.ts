@@ -59,11 +59,25 @@ async function run(): Promise<void> {
 
       for (const entry of config.wireframes || []) {
         const htmlPath = path.resolve(repoRoot, entry.html);
+        if (!htmlPath.startsWith(repoRoot + path.sep) && htmlPath !== repoRoot) {
+          core.warning(`Skipping wireframe with path outside repo root: ${entry.html}`);
+          continue;
+        }
+        const cssResolved = entry.css ? path.resolve(repoRoot, entry.css) : null;
+        if (cssResolved && !cssResolved.startsWith(repoRoot + path.sep)) {
+          core.warning(`Skipping CSS path outside repo root: ${entry.css}`);
+          continue;
+        }
+        const jsResolved = entry['actions-js'] ? path.resolve(repoRoot, entry['actions-js']) : null;
+        if (jsResolved && !jsResolved.startsWith(repoRoot + path.sep)) {
+          core.warning(`Skipping JS path outside repo root: ${entry['actions-js']}`);
+          continue;
+        }
         demos.push({
           sourceFile: configPath,
           htmlPath: fs.existsSync(htmlPath) ? htmlPath : null,
-          cssPath: entry.css ? path.resolve(repoRoot, entry.css) : null,
-          jsPath: entry['actions-js'] ? path.resolve(repoRoot, entry['actions-js']) : null,
+          cssPath: cssResolved,
+          jsPath: jsResolved,
           steps: null,
           rawConfig: entry.context || null,
           type: 'html-attribute',

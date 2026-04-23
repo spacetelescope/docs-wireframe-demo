@@ -182,7 +182,7 @@ async function fetchWithRetry(
       if (response.status === 429 || response.status >= 500) {
         const retryAfter = response.headers.get('retry-after');
         const delay = retryAfter
-          ? parseInt(retryAfter, 10) * 1000
+          ? Math.min(parseInt(retryAfter, 10) * 1000, 60000)
           : Math.min(1000 * Math.pow(2, attempt), 30000);
 
         core.warning(`LLM API returned ${response.status}, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
