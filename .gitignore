@@ -19,5 +19,6 @@ _site/
 # GitHub Action: wireframe-review
 .github/actions/wireframe-review/node_modules/
 .github/actions/wireframe-review/*.tsbuildinfo
+.github/actions/wireframe-review/dist/*.map
 # dist/ is committed for the action (required by GitHub Actions)
 !.github/actions/wireframe-review/dist/

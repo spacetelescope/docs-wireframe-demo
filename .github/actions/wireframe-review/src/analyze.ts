@@ -54,11 +54,12 @@ async function analyzeOne(
   client: LLMClient,
   artifacts: DemoArtifacts,
   formattedDiff: string,
+  scenarioFlags: { sourceChanged: boolean; wireframeChanged: boolean },
 ): Promise<AnalysisResult> {
   const label = artifacts.label;
 
   try {
-    const messages = buildAnalysisPrompt(artifacts, formattedDiff);
+    const messages = buildAnalysisPrompt(artifacts, formattedDiff, scenarioFlags);
     const response = await client.chat(messages);
 
     try {
@@ -106,12 +107,13 @@ export async function analyzeAll(
   client: LLMClient,
   allArtifacts: DemoArtifacts[],
   formattedDiff: string,
+  scenarioFlags: { sourceChanged: boolean; wireframeChanged: boolean },
 ): Promise<AnalysisResult[]> {
   const results: AnalysisResult[] = [];
 
   for (const artifacts of allArtifacts) {
     core.info(`Analyzing wireframe: ${artifacts.label}`);
-    const result = await analyzeOne(client, artifacts, formattedDiff);
+    const result = await analyzeOne(client, artifacts, formattedDiff, scenarioFlags);
     results.push(result);
 
     if (result.error) {

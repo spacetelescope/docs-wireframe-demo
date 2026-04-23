@@ -30270,10 +30270,10 @@ function parseResponse(raw, label) {
 /**
  * Analyze a single wireframe demo against the PR diff.
  */
-async function analyzeOne(client, artifacts, formattedDiff) {
+async function analyzeOne(client, artifacts, formattedDiff, scenarioFlags) {
     const label = artifacts.label;
     try {
-        const messages = (0, prompts_1.buildAnalysisPrompt)(artifacts, formattedDiff);
+        const messages = (0, prompts_1.buildAnalysisPrompt)(artifacts, formattedDiff, scenarioFlags);
         const response = await client.chat(messages);
         try {
             const result = parseResponse(response, label);
@@ -30318,11 +30318,11 @@ async function analyzeOne(client, artifacts, formattedDiff) {
 /**
  * Analyze all wireframe demos against the PR diff.
  */
-async function analyzeAll(client, allArtifacts, formattedDiff) {
+async function analyzeAll(client, allArtifacts, formattedDiff, scenarioFlags) {
     const results = [];
     for (const artifacts of allArtifacts) {
         core.info(`Analyzing wireframe: ${artifacts.label}`);
-        const result = await analyzeOne(client, artifacts, formattedDiff);
+        const result = await analyzeOne(client, artifacts, formattedDiff, scenarioFlags);
         results.push(result);
         if (result.error) {
             core.warning(`Analysis error for ${result.label}: ${result.error}`);
@@ -30735,8 +30735,17 @@ async function collectDiff(options) {
     });
     // Identify wireframe artifact files that were changed
     const wireframeFiles = allFiles.filter(f => wireframeArtifactPaths.some(p => f.filename === p || f.filename.endsWith('/' + p)));
-    const formattedDiff = formatDiff(relevantFiles, maxDiffSize);
-    core.info(`PR has ${allFiles.length} changed files, ${relevantFiles.length} relevant, ${wireframeFiles.length} wireframe artifacts`);
+    // Merge relevant source files + wireframe artifact files (deduplicated) for the LLM
+    const seen = new Set(relevantFiles.map(f => f.filename));
+    const allRelevant = [...relevantFiles];
+    for (const wf of wireframeFiles) {
+        if (!seen.has(wf.filename)) {
+            allRelevant.push(wf);
+            seen.add(wf.filename);
+        }
+    }
+    const formattedDiff = formatDiff(allRelevant, maxDiffSize);
+    core.info(`PR has ${allFiles.length} changed files, ${relevantFiles.length} source, ${wireframeFiles.length} wireframe artifacts`);
     return { allFiles, relevantFiles, wireframeFiles, formattedDiff };
 }
 
@@ -31260,13 +31269,27 @@ async function run() {
             maxDiffSize,
         });
         if (diff.relevantFiles.length === 0 && diff.wireframeFiles.length === 0) {
-            core.info('No relevant source files changed. Skipping analysis.');
+            core.info('No relevant source files or wireframe artifacts changed. Skipping analysis.');
             return;
+        }
+        // Log which scenario we're in for clarity
+        if (diff.wireframeFiles.length > 0 && diff.relevantFiles.length === 0) {
+            core.info('Only wireframe artifacts changed — will check for consistency.');
+        }
+        else if (diff.wireframeFiles.length > 0 && diff.relevantFiles.length > 0) {
+            core.info('Both source and wireframe artifacts changed — will check if wireframe updates are sufficient.');
+        }
+        else {
+            core.info('Source code changed — will check if wireframes need updating.');
         }
         // ── Create LLM client ──────────────────────────────────────────
         const client = (0, llm_1.createLLMClient)(provider, model, apiKey, githubToken);
         // ── Analyze ────────────────────────────────────────────────────
-        const results = await (0, analyze_1.analyzeAll)(client, allArtifacts, diff.formattedDiff);
+        const scenarioFlags = {
+            sourceChanged: diff.relevantFiles.length > 0,
+            wireframeChanged: diff.wireframeFiles.length > 0,
+        };
+        const results = await (0, analyze_1.analyzeAll)(client, allArtifacts, diff.formattedDiff, scenarioFlags);
         // ── Post comment ───────────────────────────────────────────────
         const commentBody = (0, comment_1.formatComment)(results);
         await (0, comment_1.postComment)(githubToken, commentBody);
@@ -31537,11 +31560,16 @@ Wireframe demos are simplified, interactive HTML representations of an applicati
 
 ## Your task
 
-Given:
-- The current wireframe HTML, CSS, custom actions JS, and step definitions
-- The PR diff (source code changes)
+You will be given:
+- The current wireframe HTML, CSS, custom actions JS, and step definitions (as they exist on the PR branch)
+- The PR diff (which may include source code changes, wireframe changes, or both)
 
-Determine whether the PR changes affect the wireframe demo in any of these ways:
+The PR may fall into one of three scenarios:
+1. **Source code changed, wireframe not changed** — Determine if the source changes affect UI layout/behavior in ways the wireframe should reflect. If so, propose wireframe updates.
+2. **Wireframe changed, source code not changed** — The wireframe was updated directly. Check whether the changes look correct and consistent (valid HTML structure, steps reference elements that exist, actions are registered, etc.).
+3. **Both source and wireframe changed** — The author may have already updated the wireframe to match source changes. Verify the wireframe updates are sufficient and consistent with the source diff. If additional changes are needed, propose them.
+
+Check for these types of impacts:
 - **Layout changes**: toolbar items added/removed/reordered, new panels/sidebars, viewer area restructuring
 - **Component changes**: new UI elements, renamed elements, changed element hierarchy
 - **Styling changes**: theme colors, spacing, fonts that the wireframe should reflect
@@ -31572,12 +31600,23 @@ Keep wireframe changes consistent with the simplified, mockup style of the exist
 /**
  * Build the analysis prompt for a single wireframe demo.
  */
-function buildAnalysisPrompt(artifacts, formattedDiff) {
+function buildAnalysisPrompt(artifacts, formattedDiff, options) {
     const messages = [
         { role: 'system', content: SYSTEM_PROMPT },
     ];
     // Build the user message with all context
     const parts = [];
+    parts.push(`# Wireframe Demo: ${artifacts.label}\n`);
+    // Tell the LLM which scenario this is
+    if (options.wireframeChanged && !options.sourceChanged) {
+        parts.push(`> **Scenario**: Only wireframe artifacts were changed in this PR (no source code changes). Please review the wireframe changes for correctness and consistency.\n`);
+    }
+    else if (options.sourceChanged && !options.wireframeChanged) {
+        parts.push(`> **Scenario**: Source code was changed but wireframe artifacts were not. Determine if the source changes require wireframe updates.\n`);
+    }
+    else {
+        parts.push(`> **Scenario**: Both source code and wireframe artifacts were changed. Verify the wireframe updates are sufficient for the source changes.\n`);
+    }
     parts.push(`# Wireframe Demo: ${artifacts.label}\n`);
     if (artifacts.htmlContent) {
         parts.push(`## Current Wireframe HTML\n\`\`\`html\n${artifacts.htmlContent}\n\`\`\`\n`);

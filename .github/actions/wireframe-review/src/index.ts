@@ -118,15 +118,28 @@ async function run(): Promise<void> {
     });
 
     if (diff.relevantFiles.length === 0 && diff.wireframeFiles.length === 0) {
-      core.info('No relevant source files changed. Skipping analysis.');
+      core.info('No relevant source files or wireframe artifacts changed. Skipping analysis.');
       return;
+    }
+
+    // Log which scenario we're in for clarity
+    if (diff.wireframeFiles.length > 0 && diff.relevantFiles.length === 0) {
+      core.info('Only wireframe artifacts changed — will check for consistency.');
+    } else if (diff.wireframeFiles.length > 0 && diff.relevantFiles.length > 0) {
+      core.info('Both source and wireframe artifacts changed — will check if wireframe updates are sufficient.');
+    } else {
+      core.info('Source code changed — will check if wireframes need updating.');
     }
 
     // ── Create LLM client ──────────────────────────────────────────
     const client = createLLMClient(provider, model, apiKey, githubToken);
 
     // ── Analyze ────────────────────────────────────────────────────
-    const results = await analyzeAll(client, allArtifacts, diff.formattedDiff);
+    const scenarioFlags = {
+      sourceChanged: diff.relevantFiles.length > 0,
+      wireframeChanged: diff.wireframeFiles.length > 0,
+    };
+    const results = await analyzeAll(client, allArtifacts, diff.formattedDiff, scenarioFlags);
 
     // ── Post comment ───────────────────────────────────────────────
     const commentBody = formatComment(results);

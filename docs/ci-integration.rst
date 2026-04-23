@@ -255,6 +255,45 @@ picks up the sibling ``jdaviz-wireframe.css`` and
 ``jdaviz-wireframe-actions.js``, and analyzes diffs under ``jdaviz/``.
 
 
+Analysis Scenarios
+-------------------
+
+The action handles three scenarios depending on what changed in the PR:
+
+Source code changed, wireframe not changed
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The most common case. A developer modifies the application source (e.g., adds a
+toolbar button, renames a plugin, changes a sidebar layout) but doesn't touch
+the wireframe files. The action analyzes the source diff and determines whether
+any wireframe artifacts (HTML, CSS, custom actions JS, or step definitions) need
+updating to stay in sync. If so, it posts suggested changes.
+
+Wireframe changed, source code not changed
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A developer directly updates the wireframe (e.g., refines the demo, fixes a
+styling issue, updates step captions). The action reviews the wireframe changes
+for **consistency**: do the step definitions reference elements that exist in the
+HTML? Are custom actions used correctly? Is the HTML well-structured?
+
+Both source and wireframe changed
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A developer updates both the source code and the wireframe in the same PR. The
+action verifies the wireframe updates are **sufficient** for the source changes —
+catching cases where the wireframe was partially updated but missed something
+(e.g., a new plugin was added to the source but not to the wireframe's plugin
+list).
+
+No relevant changes
+^^^^^^^^^^^^^^^^^^^^
+
+If the PR only touches files outside ``source-root`` (e.g., documentation text,
+CI config) and doesn't modify any wireframe artifacts, the action exits silently
+without posting a comment.
+
+
 PR Comment Format
 ------------------
 

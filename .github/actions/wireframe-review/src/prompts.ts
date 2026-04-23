@@ -38,11 +38,16 @@ Wireframe demos are simplified, interactive HTML representations of an applicati
 
 ## Your task
 
-Given:
-- The current wireframe HTML, CSS, custom actions JS, and step definitions
-- The PR diff (source code changes)
+You will be given:
+- The current wireframe HTML, CSS, custom actions JS, and step definitions (as they exist on the PR branch)
+- The PR diff (which may include source code changes, wireframe changes, or both)
 
-Determine whether the PR changes affect the wireframe demo in any of these ways:
+The PR may fall into one of three scenarios:
+1. **Source code changed, wireframe not changed** — Determine if the source changes affect UI layout/behavior in ways the wireframe should reflect. If so, propose wireframe updates.
+2. **Wireframe changed, source code not changed** — The wireframe was updated directly. Check whether the changes look correct and consistent (valid HTML structure, steps reference elements that exist, actions are registered, etc.).
+3. **Both source and wireframe changed** — The author may have already updated the wireframe to match source changes. Verify the wireframe updates are sufficient and consistent with the source diff. If additional changes are needed, propose them.
+
+Check for these types of impacts:
 - **Layout changes**: toolbar items added/removed/reordered, new panels/sidebars, viewer area restructuring
 - **Component changes**: new UI elements, renamed elements, changed element hierarchy
 - **Styling changes**: theme colors, spacing, fonts that the wireframe should reflect
@@ -77,6 +82,7 @@ Keep wireframe changes consistent with the simplified, mockup style of the exist
 export function buildAnalysisPrompt(
   artifacts: DemoArtifacts,
   formattedDiff: string,
+  options: { sourceChanged: boolean; wireframeChanged: boolean },
 ): Message[] {
   const messages: Message[] = [
     { role: 'system', content: SYSTEM_PROMPT },
@@ -84,6 +90,17 @@ export function buildAnalysisPrompt(
 
   // Build the user message with all context
   const parts: string[] = [];
+
+  parts.push(`# Wireframe Demo: ${artifacts.label}\n`);
+
+  // Tell the LLM which scenario this is
+  if (options.wireframeChanged && !options.sourceChanged) {
+    parts.push(`> **Scenario**: Only wireframe artifacts were changed in this PR (no source code changes). Please review the wireframe changes for correctness and consistency.\n`);
+  } else if (options.sourceChanged && !options.wireframeChanged) {
+    parts.push(`> **Scenario**: Source code was changed but wireframe artifacts were not. Determine if the source changes require wireframe updates.\n`);
+  } else {
+    parts.push(`> **Scenario**: Both source code and wireframe artifacts were changed. Verify the wireframe updates are sufficient for the source changes.\n`);
+  }
 
   parts.push(`# Wireframe Demo: ${artifacts.label}\n`);
 

@@ -156,9 +156,19 @@ export async function collectDiff(options: CollectDiffOptions): Promise<DiffResu
     wireframeArtifactPaths.some(p => f.filename === p || f.filename.endsWith('/' + p))
   );
 
-  const formattedDiff = formatDiff(relevantFiles, maxDiffSize);
+  // Merge relevant source files + wireframe artifact files (deduplicated) for the LLM
+  const seen = new Set(relevantFiles.map(f => f.filename));
+  const allRelevant = [...relevantFiles];
+  for (const wf of wireframeFiles) {
+    if (!seen.has(wf.filename)) {
+      allRelevant.push(wf);
+      seen.add(wf.filename);
+    }
+  }
 
-  core.info(`PR has ${allFiles.length} changed files, ${relevantFiles.length} relevant, ${wireframeFiles.length} wireframe artifacts`);
+  const formattedDiff = formatDiff(allRelevant, maxDiffSize);
+
+  core.info(`PR has ${allFiles.length} changed files, ${relevantFiles.length} source, ${wireframeFiles.length} wireframe artifacts`);
 
   return { allFiles, relevantFiles, wireframeFiles, formattedDiff };
 }
