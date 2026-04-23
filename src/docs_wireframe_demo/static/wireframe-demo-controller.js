@@ -842,6 +842,10 @@
             var idx = parseInt(dotEl.getAttribute('data-step-index'), 10);
             if (isNaN(idx)) return;
             self.jumpToStep(idx);
+            self._tooltipActivated = true;
+            self._showCaptionForStep(self._stepIndex);
+            self._updateTooltipButtons();
+            self._repositionTooltip();
         });
 
         // Dot hover → show tooltip + caption preview
@@ -1080,19 +1084,27 @@
         if (this._cursorEl) this._hideCursor();
 
         if (targetIndex > this._stepIndex) {
-            // ── Forward jump: replay intermediate steps synchronously ──
-            for (var i = this._stepIndex; i < targetIndex; i++) {
-                var step = this._steps[i];
-                // Cache snapshot before executing
-                if (this.config.timeline !== false && !this._htmlSnapshots[i]) {
-                    this._htmlSnapshots[i] = this._contentRoot.innerHTML;
+            // ── Forward jump ────────────────────────────────────────────
+            // Use cached snapshot if available (from a previous loop or
+            // step-back); otherwise replay intermediate steps.
+            if (this._htmlSnapshots[targetIndex]) {
+                this._contentRoot.innerHTML = this._htmlSnapshots[targetIndex];
+                document.dispatchEvent(new CustomEvent('wireframe-demo-loaded', {
+                    detail: { container: this.container, instance: this }
+                }));
+            } else {
+                for (var i = this._stepIndex; i < targetIndex; i++) {
+                    var step = this._steps[i];
+                    if (this.config.timeline !== false && !this._htmlSnapshots[i]) {
+                        this._htmlSnapshots[i] = this._contentRoot.innerHTML;
+                    }
+                    var el = null;
+                    if (step.target) {
+                        el = this._contentRoot.querySelector(step.target) ||
+                             this.container.querySelector(step.target);
+                    }
+                    this._executeAction(step, el);
                 }
-                var el = null;
-                if (step.target) {
-                    el = this._contentRoot.querySelector(step.target) ||
-                         this.container.querySelector(step.target);
-                }
-                this._executeAction(step, el);
             }
             this._stepIndex = targetIndex;
         } else {
