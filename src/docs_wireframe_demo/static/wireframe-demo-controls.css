@@ -71,13 +71,13 @@
 }
 
 .wfd-caption--bottom {
-    bottom: 12px;
+    bottom: 34px;
     top: auto;
     transition: bottom 0.3s ease, opacity 0.3s ease;
 }
 
 .wfd-caption--bottom.wfd-caption--timeline-visible {
-    bottom: 90px;
+    bottom: 84px;
 }
 
 .wfd-caption--visible {

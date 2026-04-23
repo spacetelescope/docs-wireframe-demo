@@ -230,6 +230,7 @@
         '  display: flex; align-items: center; gap: 4px;',
         '  width: var(--wfd-control-size, 44px);',
         '  justify-content: center;',
+        '  position: relative;',
         '  opacity: 0; pointer-events: none;',
         '  transition: opacity 0.2s;',
         '}',
@@ -242,17 +243,29 @@
         '.wfd-control-btn--speed svg {',
         '  width: 14px; height: 14px;',
         '}',
-        '.wfd-control-btn--speed::after { display: none; }',
+        '.wfd-control-btn--speed::after {',
+        '  content: attr(data-tooltip);',
+        '  position: absolute; right: 100%; top: 50%;',
+        '  transform: translateY(-50%);',
+        '  margin-right: 8px;',
+        '  background: var(--wfd-control-tooltip-bg, rgba(0,0,0,0.8));',
+        '  color: var(--wfd-control-tooltip-color, #fff);',
+        '  padding: 4px 10px; border-radius: 4px; font-size: 12px;',
+        '  font-weight: 600; white-space: nowrap; pointer-events: none;',
+        '  opacity: 0; transition: opacity 0.2s;',
+        '}',
+        '.wfd-control-btn--speed:hover::after { opacity: 1; }',
         /* Speed label below play button */
         '.wfd-speed-label {',
         '  font-size: 11px; font-weight: 600;',
         '  width: var(--wfd-control-size, 44px);',
+        '  height: 16px; line-height: 16px;',
         '  text-align: center; color: var(--wfd-control-color, #fff);',
         '  user-select: none;',
         '  opacity: 0; pointer-events: none;',
         '  transition: opacity 0.2s;',
         '}',
-        ':host(:hover) .wfd-speed-label, .wfd-speed-label--visible { opacity: 1; }'
+        ':host(:hover) .wfd-speed-label, .wfd-speed-label--visible, .wfd-speed-label--nondefault { opacity: 1; }'
     ].join('\n');
 
     // SVG icons (Material Design style, white fill via currentColor)
@@ -290,11 +303,13 @@
         var slowBtn = document.createElement('button');
         slowBtn.className = 'wfd-control-btn wfd-control-btn--speed';
         slowBtn.setAttribute('aria-label', 'Slow down');
+        slowBtn.setAttribute('data-tooltip', 'Slower');
         slowBtn.innerHTML = ICON_SPEED_DOWN;
 
         var fastBtn = document.createElement('button');
         fastBtn.className = 'wfd-control-btn wfd-control-btn--speed';
         fastBtn.setAttribute('aria-label', 'Speed up');
+        fastBtn.setAttribute('data-tooltip', 'Faster');
         fastBtn.innerHTML = ICON_SPEED_UP;
 
         speedRow.appendChild(slowBtn);
@@ -343,6 +358,7 @@
             speedLabel.textContent = instance._speedFactor + '\u00d7';
             slowBtn.style.visibility = instance._speedFactor <= SPEED_STEPS[0] ? 'hidden' : '';
             fastBtn.style.visibility = '';
+            speedLabel.classList.toggle('wfd-speed-label--nondefault', instance._speedFactor !== 1);
         });
 
         fastBtn.addEventListener('click', function (e) {
@@ -357,6 +373,7 @@
             speedLabel.textContent = instance._speedFactor + '\u00d7';
             fastBtn.style.visibility = instance._speedFactor >= SPEED_STEPS[SPEED_STEPS.length - 1] ? 'hidden' : '';
             slowBtn.style.visibility = '';
+            speedLabel.classList.toggle('wfd-speed-label--nondefault', instance._speedFactor !== 1);
         });
 
         instance._controlBtn = primaryBtn;
