@@ -709,6 +709,19 @@
         this._captionEl.classList.remove('wfd-caption--visible');
     };
 
+    WireframeDemo.prototype._showCaptionForStep = function (stepIndex) {
+        if (!this._captionEl) return;
+        var step = this._steps[stepIndex];
+        if (step && step.caption) {
+            this._captionEl.classList.remove('wfd-caption--top', 'wfd-caption--bottom');
+            this._captionEl.classList.add('wfd-caption--bottom');
+            this._captionEl.textContent = step.caption;
+            this._captionEl.classList.add('wfd-caption--visible');
+        } else {
+            this._hideCaption();
+        }
+    };
+
     // ── Timeline overlay ────────────────────────────────────────────────
 
     WireframeDemo.prototype._createTimeline = function () {
@@ -771,6 +784,7 @@
             if (self._stepIndex > 0) {
                 self.jumpToStep(self._stepIndex - 1);
             }
+            self._showCaptionForStep(self._stepIndex);
             // Update buttons in place — do NOT reposition
             self._updateTooltipButtons();
             self._repositionTooltip(); // re-measure in case button visibility changed width
@@ -802,6 +816,7 @@
             if (self._stepIndex < self._steps.length - 1) {
                 self.jumpToStep(self._stepIndex + 1);
             }
+            self._showCaptionForStep(self._stepIndex);
             // Update buttons in place — do NOT reposition
             self._updateTooltipButtons();
             self._repositionTooltip();
