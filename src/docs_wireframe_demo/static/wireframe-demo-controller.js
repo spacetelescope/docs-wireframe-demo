@@ -175,10 +175,7 @@
         '  bottom: var(--wfd-control-bottom, 12px);',
         '  right: var(--wfd-control-right, 12px);',
         '  z-index: 10000;',
-        '  align-items: center;',
-        '  /* Height spans from bottom:12px up to caption level (bottom:90px + btn height) */',
-        '  height: calc(90px - 12px + var(--wfd-control-size, 44px));',
-        '  justify-content: flex-end;',
+        '  align-items: flex-end;',
         '}',
         '@keyframes wfd-btn-pulse {',
         '  0%   { transform: scale(1); opacity: 0.5; }',
@@ -192,6 +189,7 @@
         '  padding: 0;',
         '  background: var(--wfd-control-bg, rgba(0,0,0,0.55));',
         '  color: var(--wfd-control-color, #fff);',
+        '  cursor: pointer;',
         '  display: flex; align-items: center; justify-content: center;',
         '  transition: background 0.2s, transform 0.2s;',
         '  position: relative;',
@@ -227,30 +225,34 @@
         '  opacity: 0; transition: opacity 0.2s;',
         '}',
         '.wfd-control-btn:hover::after { opacity: 1; }',
-        /* Speed row */
+        /* Speed row — just the +/- buttons, fits in button width */
         '.wfd-speed-row {',
-        '  display: flex; align-items: center; gap: 2px;',
+        '  display: flex; align-items: center; gap: 4px;',
+        '  width: var(--wfd-control-size, 44px);',
+        '  justify-content: center;',
         '  opacity: 0; pointer-events: none;',
         '  transition: opacity 0.2s;',
         '}',
-        ':host(:hover) .wfd-speed-row { opacity: 1; pointer-events: auto; }',
+        ':host(:hover) .wfd-speed-row, .wfd-speed-row--visible { opacity: 1; pointer-events: auto; }',
         '.wfd-control-btn--speed {',
-        '  width: 28px; height: 28px;',
+        '  width: 20px; height: 20px;',
         '  border-radius: var(--wfd-control-radius, 8px);',
+        '  flex-shrink: 0;',
         '}',
         '.wfd-control-btn--speed svg {',
-        '  width: 16px; height: 16px;',
+        '  width: 14px; height: 14px;',
         '}',
         '.wfd-control-btn--speed::after { display: none; }',
+        /* Speed label below play button */
         '.wfd-speed-label {',
-        '  font-size: 11px; font-weight: 600; min-width: 28px;',
+        '  font-size: 11px; font-weight: 600;',
+        '  width: var(--wfd-control-size, 44px);',
         '  text-align: center; color: var(--wfd-control-color, #fff);',
         '  user-select: none;',
+        '  opacity: 0; pointer-events: none;',
+        '  transition: opacity 0.2s;',
         '}',
-        /* Restart positioned to align with bumped captions */
-        '.wfd-control-btn--restart {',
-        '  margin-bottom: auto;',
-        '}'
+        ':host(:hover) .wfd-speed-label, .wfd-speed-label--visible { opacity: 1; }'
     ].join('\n');
 
     // SVG icons (Material Design style, white fill via currentColor)
@@ -281,28 +283,21 @@
         restartBtn.hidden = true;
         shadow.appendChild(restartBtn);
 
-        // Speed controls row (hidden by default, shown on host hover)
+        // Speed controls row (just +/- buttons, no label)
         var speedRow = document.createElement('div');
         speedRow.className = 'wfd-speed-row';
 
         var slowBtn = document.createElement('button');
         slowBtn.className = 'wfd-control-btn wfd-control-btn--speed';
         slowBtn.setAttribute('aria-label', 'Slow down');
-        slowBtn.setAttribute('data-tooltip', 'Slower');
         slowBtn.innerHTML = ICON_SPEED_DOWN;
-
-        var speedLabel = document.createElement('span');
-        speedLabel.className = 'wfd-speed-label';
-        speedLabel.textContent = '1\u00d7';
 
         var fastBtn = document.createElement('button');
         fastBtn.className = 'wfd-control-btn wfd-control-btn--speed';
         fastBtn.setAttribute('aria-label', 'Speed up');
-        fastBtn.setAttribute('data-tooltip', 'Faster');
         fastBtn.innerHTML = ICON_SPEED_UP;
 
         speedRow.appendChild(slowBtn);
-        speedRow.appendChild(speedLabel);
         speedRow.appendChild(fastBtn);
         shadow.appendChild(speedRow);
 
@@ -313,6 +308,12 @@
         primaryBtn.setAttribute('data-tooltip', 'Pause');
         primaryBtn.innerHTML = ICON_PAUSE;
         shadow.appendChild(primaryBtn);
+
+        // Speed label below play button
+        var speedLabel = document.createElement('span');
+        speedLabel.className = 'wfd-speed-label';
+        speedLabel.textContent = '1\u00d7';
+        shadow.appendChild(speedLabel);
 
         primaryBtn.addEventListener('click', function (e) {
             e.stopPropagation();
@@ -360,6 +361,8 @@
 
         instance._controlBtn = primaryBtn;
         instance._restartBtn = restartBtn;
+        instance._speedRow = speedRow;
+        instance._speedLabel = speedLabel;
         return host;
     }
 
@@ -623,11 +626,15 @@
             btn.setAttribute('data-tooltip', 'Pause');
             btn.classList.remove('wfd-control-btn--pulse');
             if (restartBtn) restartBtn.hidden = true;
+            if (this._speedRow) this._speedRow.classList.remove('wfd-speed-row--visible');
+            if (this._speedLabel) this._speedLabel.classList.remove('wfd-speed-label--visible');
         } else {
             btn.innerHTML = ICON_PLAY;
             btn.setAttribute('aria-label', 'Play demo');
             btn.setAttribute('data-tooltip', 'Play');
             if (restartBtn) restartBtn.hidden = false;
+            if (this._speedRow) this._speedRow.classList.add('wfd-speed-row--visible');
+            if (this._speedLabel) this._speedLabel.classList.add('wfd-speed-label--visible');
             if (pulse) {
                 btn.classList.remove('wfd-control-btn--pulse');
                 void btn.offsetWidth;
