@@ -66,13 +66,13 @@
 }
 
 .wfd-caption--bottom {
-    bottom: 8px;
+    bottom: 12px;
     top: auto;
     transition: bottom 0.3s ease, opacity 0.3s ease;
 }
 
 .wfd-caption--bottom.wfd-caption--timeline-visible {
-    bottom: 68px;
+    bottom: 44px;
 }
 
 .wfd-caption--visible {
@@ -100,7 +100,7 @@
 
 .wfd-timeline {
     position: absolute;
-    bottom: 0;
+    bottom: 12px;
     left: var(--wfd-caption-inset, 68px);
     right: var(--wfd-caption-inset, 68px);
     z-index: 9999;
