@@ -1,0 +1,26 @@
+{
+  "wireframe": "https://mast.stsci.edu/search/ui/#/jwst",
+  "title": "MAST JWST Search — Demo",
+  "steps": [
+    "#target-name-input@2000:set-value=M31",
+    "#target-name-input@800:highlight",
+    "#radius-value-input@1500:set-value=5",
+    "#data_type_spectrum-btn@1500:click",
+    "#data_type_other-btn@1200:click",
+    "#instrument_nircam-btn@1200:click",
+    "#instrument_nirspec-btn@1200:click",
+    "#instrument_miri-btn@1200:click",
+    "pause@1000",
+    "#instrument_miri-btn@1200:click",
+    "#instrument_nircam-btn@1200:click",
+    "input[name='exposure_time']@1500:set-value=100..500",
+    "#pi_surname@1500:set-value=Weisz",
+    "#form-submit-button@2500:highlight",
+    "pause@2000"
+  ],
+  "repeat": true,
+  "autoStart": true,
+  "height": "700px",
+  "cursor": true,
+  "pauseOnInteraction": true
+}

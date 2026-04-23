@@ -7,15 +7,38 @@ Usage in RST::
        :steps: #btn@1500:click, #panel@1000:toggle-class=open
        :repeat: true
        :height: 500px
+
+    .. wireframe-demo:: https://example.com/app
+       :steps: #btn@1500:click
+       :height: 500px
+       :resizable:
 """
 
 import html as html_module
 import json
+import logging
 import os
 import time
 
 from docutils import nodes
 from sphinx.util.docutils import SphinxDirective
+
+from .sanitizer import fetch_and_sanitize
+
+logger = logging.getLogger(__name__)
+
+
+def _get_url_fetcher():
+    """Return the best available URL-to-HTML fetcher.
+
+    Prefers the Playwright renderer (handles SPAs), falls back to
+    the plain HTTP fetcher.
+    """
+    try:
+        from .renderer import fetch_rendered_and_sanitize
+        return fetch_rendered_and_sanitize
+    except ImportError:
+        return fetch_and_sanitize
 
 
 class WireframeDemoDirective(SphinxDirective):
@@ -63,10 +86,16 @@ class WireframeDemoDirective(SphinxDirective):
         'initial-class': str,
         'cursor': str,
         'cursor-speed': str,
+        'resizable': str,
     }
+
+    @staticmethod
+    def _is_url(value: str) -> bool:
+        return value.startswith(("http://", "https://"))
 
     def run(self):
         html_path = self.arguments[0]
+        is_url = self._is_url(html_path)
 
         # Compute relative path prefix to _static/ based on document depth.
         # A page at "plugins/gaussian_smooth" is 1 level deep → "../_static/"
@@ -86,7 +115,12 @@ class WireframeDemoDirective(SphinxDirective):
 
         # Build config object
         config = {}
-        config['htmlSrc'] = resolve_static_path(html_path)
+
+        if is_url:
+            # URL source: fetch and sanitize at build time, embed via srcdoc
+            config['iframeSrcdoc'] = True
+        else:
+            config['htmlSrc'] = resolve_static_path(html_path)
 
         # Steps: either shorthand strings or JSON
         steps_str = self.options.get('steps')
@@ -128,6 +162,10 @@ class WireframeDemoDirective(SphinxDirective):
         # Height
         height = self.options.get('height', '')
 
+        # Resizable
+        resizable = self.options.get('resizable', '').strip().lower() != 'false'  \
+            if 'resizable' in self.options else is_url  # default on for URL sources
+
         # Initial CSS class(es) to apply to the content root
         initial_class = self.options.get('initial-class', '')
         if initial_class:
@@ -136,7 +174,12 @@ class WireframeDemoDirective(SphinxDirective):
         config_json = json.dumps(config)
         config_escaped = html_module.escape(config_json)
 
-        style_attr = f' style="height:{height}"' if height else ''
+        style_parts = []
+        if height:
+            style_parts.append(f'height:{height}')
+        if resizable:
+            style_parts.append('resize:both;overflow:hidden')
+        style_attr = f' style="{";".join(style_parts)}"' if style_parts else ''
 
         # Additional CSS/JS — resolve paths relative to _static/
         extra_css = ''
@@ -151,7 +194,35 @@ class WireframeDemoDirective(SphinxDirective):
             resolved_js = resolve_static_path(js_path)
             extra_js = f'<script src="{html_module.escape(resolved_js)}"></script>'
 
-        raw_html = f"""\
+        if is_url:
+            # Fetch, sanitize, and embed as srcdoc at build time
+            fetcher = _get_url_fetcher()
+            try:
+                sanitized = fetcher(html_path)
+            except Exception as exc:
+                logger.error("Failed to fetch wireframe URL %s: %s", html_path, exc)
+                error = nodes.error()
+                error += nodes.paragraph(
+                    text=f'wireframe-demo: failed to fetch {html_path}: {exc}')
+                return [error]
+
+            srcdoc_escaped = html_module.escape(sanitized, quote=True)
+            raw_html = f"""\
+{extra_css}
+{extra_js}
+<div id="{container_id}"
+     data-wireframe-demo
+     data-wireframe-config="{config_escaped}"{style_attr}>
+  <iframe class="wfd-iframe"
+          srcdoc="{srcdoc_escaped}"
+          sandbox="allow-same-origin"
+          referrerpolicy="no-referrer"
+          style="width:100%;height:100%;border:none;">
+  </iframe>
+</div>
+"""
+        else:
+            raw_html = f"""\
 {extra_css}
 {extra_js}
 <div id="{container_id}"

@@ -256,3 +256,20 @@
 .wfd-timeline-tooltip__btn--play:hover {
     background: rgba(255, 255, 255, 0.25);
 }
+
+/* ── Resizable container (for URL-sourced wireframes) ────────────── */
+
+[data-wireframe-demo][style*="resize"] {
+    min-width: 280px;
+    min-height: 200px;
+    border: 1px solid rgba(128, 128, 128, 0.25);
+    border-radius: 4px;
+}
+
+/* Iframe inside the container fills all available space */
+[data-wireframe-demo] .wfd-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    display: block;
+}

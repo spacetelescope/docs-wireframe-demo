@@ -403,12 +403,13 @@
 
     // ── Highlight helper (outside Shadow DOM) ───────────────────────────
 
-    // Inject highlight keyframe animation once into the document
-    var _highlightInjected = false;
-    function ensureHighlightStyle() {
-        if (_highlightInjected) return;
-        _highlightInjected = true;
-        var s = document.createElement('style');
+    // Inject highlight keyframe animation once into a given document
+    var _highlightInjectedDocs = [];
+    function ensureHighlightStyle(doc) {
+        doc = doc || document;
+        if (_highlightInjectedDocs.indexOf(doc) !== -1) return;
+        _highlightInjectedDocs.push(doc);
+        var s = doc.createElement('style');
         s.textContent = [
             '@keyframes wfd-highlight-pulse {',
             '  0%   { box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.6); }',
@@ -422,7 +423,7 @@
             '  border-radius: 2px;',
             '}'
         ].join('\n');
-        document.head.appendChild(s);
+        (doc.head || doc.documentElement).appendChild(s);
     }
 
     // ── WireframeDemo class ─────────────────────────────────────────────
@@ -435,6 +436,7 @@
         this.container = container;
         this.config = Object.assign({
             htmlSrc: null,
+            iframeSrcdoc: false,
             steps: [],
             repeat: true,
             autoStart: true,
@@ -457,6 +459,7 @@
         this._observer = null;
         this._highlightedEls = [];
         this._contentRoot = null; // the element holding fetched HTML
+        this._iframeEl = null;    // iframe element (when using iframeSrcdoc)
         this._cursorEl = null;
         this._cursorX = 0;
         this._cursorY = 0;
@@ -496,8 +499,14 @@
         // Parse steps
         this._steps = parseSteps(this.config.steps);
 
-        // Inject highlight style
-        ensureHighlightStyle();
+        // Inject highlight style into the parent document
+        ensureHighlightStyle(document);
+
+        // Check for iframe-based content (URL-sourced wireframes)
+        if (this.config.iframeSrcdoc) {
+            this._initIframe();
+            return;
+        }
 
         // Create content root (where fetched HTML goes)
         this._contentRoot = document.createElement('div');
@@ -552,6 +561,70 @@
             // Save initial HTML for restart/repeat reset
             this._initialHTML = this._contentRoot.innerHTML;
             self._onReady();
+        }
+    };
+
+    // ── Iframe-based content init ───────────────────────────────────────
+
+    WireframeDemo.prototype._initIframe = function () {
+        var self = this;
+        var container = this.container;
+
+        // Find the existing <iframe> that was embedded with srcdoc
+        var iframe = container.querySelector('iframe.wfd-iframe');
+        if (!iframe) {
+            console.error('[WireframeDemo] iframeSrcdoc mode but no iframe.wfd-iframe found');
+            return;
+        }
+        this._iframeEl = iframe;
+
+        // Create controls overlay (Shadow DOM) — lives in the outer container
+        var controlsHost = createControlsHost(this);
+        container.appendChild(controlsHost);
+
+        // Create animated cursor if enabled — lives in outer container
+        if (this.config.cursor) {
+            this._createCursor();
+        }
+
+        // Pause on user interaction
+        if (this.config.pauseOnInteraction) {
+            container.addEventListener('click', function (e) {
+                if (!e.isTrusted) return;
+                if (e.target.closest && e.target.closest('.wfd-controls-host')) return;
+                if (self._playing) {
+                    self.pause();
+                }
+            }, true);
+        }
+
+        // Wait for iframe to load, then set up content root
+        function onIframeReady() {
+            try {
+                var iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                self._contentRoot = iframeDoc.body || iframeDoc.documentElement;
+                self._initialHTML = self._contentRoot.innerHTML;
+                // Inject highlight styles into the iframe document
+                ensureHighlightStyle(iframeDoc);
+                // Also listen for clicks inside the iframe for pause-on-interaction
+                if (self.config.pauseOnInteraction) {
+                    iframeDoc.addEventListener('click', function (e) {
+                        if (!e.isTrusted) return;
+                        if (self._playing) {
+                            self.pause();
+                        }
+                    }, true);
+                }
+                self._onReady();
+            } catch (err) {
+                console.error('[WireframeDemo] Cannot access iframe content:', err.message);
+            }
+        }
+
+        if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
+            onIframeReady();
+        } else {
+            iframe.addEventListener('load', onIframeReady);
         }
     };
 
@@ -640,6 +713,15 @@
         // starts fresh (removes dynamically added viewers, sidebars, etc.)
         if (this._initialHTML !== undefined) {
             this._contentRoot.innerHTML = this._initialHTML;
+            // Re-inject highlight styles if content is in an iframe
+            // (innerHTML reset removes them)
+            if (this._iframeEl) {
+                var iframeDoc = this._iframeEl.contentDocument || this._iframeEl.contentWindow.document;
+                // Remove from injected docs tracker so it gets re-injected
+                var idx = _highlightInjectedDocs.indexOf(iframeDoc);
+                if (idx !== -1) _highlightInjectedDocs.splice(idx, 1);
+                ensureHighlightStyle(iframeDoc);
+            }
             // Re-dispatch so external code (e.g. jdaviz-wireframe-actions)
             // can re-wire toolbar clicks, icons, etc.
             document.dispatchEvent(new CustomEvent('wireframe-demo-loaded', {
@@ -716,8 +798,20 @@
 
         var containerRect = this.container.getBoundingClientRect();
         var elRect = el.getBoundingClientRect();
-        var endX = (elRect.left - containerRect.left) + elRect.width / 2;
-        var endY = (elRect.top - containerRect.top) + elRect.height / 2;
+
+        // If content is inside an iframe, elRect is relative to the iframe
+        // viewport — we need to offset by the iframe's position in the
+        // parent document.
+        var iframeOffsetX = 0;
+        var iframeOffsetY = 0;
+        if (this._iframeEl) {
+            var iframeRect = this._iframeEl.getBoundingClientRect();
+            iframeOffsetX = iframeRect.left - containerRect.left;
+            iframeOffsetY = iframeRect.top - containerRect.top;
+        }
+
+        var endX = iframeOffsetX + (elRect.left - (this._iframeEl ? 0 : containerRect.left)) + elRect.width / 2;
+        var endY = iframeOffsetY + (elRect.top - (this._iframeEl ? 0 : containerRect.top)) + elRect.height / 2;
         var startX = this._cursorX;
         var startY = this._cursorY;
 
@@ -1380,6 +1474,13 @@
             // Restore the content DOM to its initial state before replaying
             if (this._initialHTML !== undefined) {
                 this._contentRoot.innerHTML = this._initialHTML;
+                // Re-inject highlight styles if content is in an iframe
+                if (this._iframeEl) {
+                    var iframeDoc = this._iframeEl.contentDocument || this._iframeEl.contentWindow.document;
+                    var idx = _highlightInjectedDocs.indexOf(iframeDoc);
+                    if (idx !== -1) _highlightInjectedDocs.splice(idx, 1);
+                    ensureHighlightStyle(iframeDoc);
+                }
                 document.dispatchEvent(new CustomEvent('wireframe-demo-loaded', {
                     detail: { container: this.container, instance: this }
                 }));
