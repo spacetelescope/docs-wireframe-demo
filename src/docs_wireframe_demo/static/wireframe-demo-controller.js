@@ -949,15 +949,12 @@
 
         if (this._tooltipBackBtn) {
             this._tooltipBackBtn.hidden = !showStepBtns;
-            if (showStepBtns && refIdx <= 0) {
-                this._tooltipBackBtn.hidden = true;
-            }
+            // Keep spacer so tooltip width stays constant
+            this._tooltipBackBtn.style.visibility = (showStepBtns && refIdx <= 0) ? 'hidden' : '';
         }
         if (this._tooltipFwdBtn) {
             this._tooltipFwdBtn.hidden = !showStepBtns;
-            if (showStepBtns && refIdx >= this._steps.length - 1) {
-                this._tooltipFwdBtn.hidden = true;
-            }
+            this._tooltipFwdBtn.style.visibility = (showStepBtns && refIdx >= this._steps.length - 1) ? 'hidden' : '';
         }
     };
 
