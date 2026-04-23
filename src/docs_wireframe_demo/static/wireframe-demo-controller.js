@@ -780,14 +780,15 @@
 
         ttBack.addEventListener('click', function (e) {
             e.stopPropagation();
+            var refIdx = self._tooltipActivated ? self._stepIndex : self._tooltipDotIndex;
             self._tooltipActivated = true;
-            if (self._stepIndex > 0) {
-                self.jumpToStep(self._stepIndex - 1);
+            if (refIdx > 0) {
+                self.jumpToStep(refIdx - 1);
             }
             self._showCaptionForStep(self._stepIndex);
             // Update buttons in place — do NOT reposition
             self._updateTooltipButtons();
-            self._repositionTooltip(); // re-measure in case button visibility changed width
+            self._repositionTooltip();
         });
 
         ttPlay.addEventListener('click', function (e) {
@@ -795,7 +796,11 @@
             var wasActivated = self._tooltipActivated;
             self._tooltipActivated = true;
             if (self._playing) {
-                // Pause at wherever the demo currently is
+                // First pause click from a hovered dot: jump there first
+                if (!wasActivated && self._tooltipDotIndex >= 0 &&
+                    self._tooltipDotIndex !== self._stepIndex) {
+                    self.jumpToStep(self._tooltipDotIndex);
+                }
                 self.pause();
             } else {
                 // First play click from a hovered dot: jump there first
@@ -805,6 +810,7 @@
                 }
                 self.play();
             }
+            self._showCaptionForStep(self._stepIndex);
             // Update buttons in place — do NOT reposition
             self._updateTooltipButtons();
             self._repositionTooltip();
@@ -812,9 +818,10 @@
 
         ttForward.addEventListener('click', function (e) {
             e.stopPropagation();
+            var refIdx = self._tooltipActivated ? self._stepIndex : self._tooltipDotIndex;
             self._tooltipActivated = true;
-            if (self._stepIndex < self._steps.length - 1) {
-                self.jumpToStep(self._stepIndex + 1);
+            if (refIdx < self._steps.length - 1) {
+                self.jumpToStep(refIdx + 1);
             }
             self._showCaptionForStep(self._stepIndex);
             // Update buttons in place — do NOT reposition
