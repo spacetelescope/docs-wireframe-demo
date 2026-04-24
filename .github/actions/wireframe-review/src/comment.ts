@@ -2,6 +2,7 @@
  * Format and post/update a PR comment with wireframe review results.
  */
 
+import * as core from '@actions/core';
 import * as github from '@actions/github';
 import { AnalysisResult } from './analyze';
 import { ValidationResult } from './validate';
@@ -144,10 +145,14 @@ export function formatComment(results: AnalysisResult[], validationResults?: Val
 
 /**
  * Post or update the wireframe review comment on the PR.
+ *
+ * - Suggestions (needsUpdate): edit the existing bot comment (or create one)
+ * - No updates / errors: always create a new comment in the timeline
  */
 export async function postComment(
   token: string,
   body: string,
+  hasSuggestions: boolean,
 ): Promise<void> {
   const octokit = github.getOctokit(token);
   const { owner, repo } = github.context.repo;
@@ -157,17 +162,32 @@ export async function postComment(
     throw new Error('This action must be run on a pull_request event.');
   }
 
-  // Look for an existing comment from this action
-  const existingComment = await findExistingComment(octokit, owner, repo, pullNumber);
-
-  if (existingComment) {
-    await octokit.rest.issues.updateComment({
-      owner,
-      repo,
-      comment_id: existingComment.id,
-      body,
-    });
+  if (hasSuggestions) {
+    // Edit existing comment so suggestions stay consolidated
+    const existingComment = await findExistingComment(octokit, owner, repo, pullNumber);
+    if (existingComment) {
+      await octokit.rest.issues.updateComment({
+        owner,
+        repo,
+        comment_id: existingComment.id,
+        body,
+      });
+    } else {
+      await octokit.rest.issues.createComment({
+        owner,
+        repo,
+        issue_number: pullNumber,
+        body,
+      });
+    }
   } else {
+    // No suggestions / errors — new comment for timeline visibility,
+    // but skip if the latest bot comment already says the same thing.
+    const latest = await findLatestBotComment(octokit, owner, repo, pullNumber);
+    if (latest && latest.body === body) {
+      core.info('Skipping comment — latest bot comment is identical.');
+      return;
+    }
     await octokit.rest.issues.createComment({
       owner,
       repo,
@@ -177,12 +197,13 @@ export async function postComment(
   }
 }
 
-async function findExistingComment(
+async function findBotComments(
   octokit: ReturnType<typeof github.getOctokit>,
   owner: string,
   repo: string,
   pullNumber: number,
-): Promise<{ id: number } | null> {
+): Promise<Array<{ id: number; body: string }>> {
+  const matches: Array<{ id: number; body: string }> = [];
   let page = 1;
   while (true) {
     const { data: comments } = await octokit.rest.issues.listComments({
@@ -197,7 +218,7 @@ async function findExistingComment(
 
     for (const comment of comments) {
       if (comment.body?.includes(COMMENT_MARKER)) {
-        return { id: comment.id };
+        matches.push({ id: comment.id, body: comment.body });
       }
     }
 
@@ -205,7 +226,27 @@ async function findExistingComment(
     page++;
   }
 
-  return null;
+  return matches;
+}
+
+async function findExistingComment(
+  octokit: ReturnType<typeof github.getOctokit>,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+): Promise<{ id: number } | null> {
+  const all = await findBotComments(octokit, owner, repo, pullNumber);
+  return all.length > 0 ? { id: all[0].id } : null;
+}
+
+async function findLatestBotComment(
+  octokit: ReturnType<typeof github.getOctokit>,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+): Promise<{ id: number; body: string } | null> {
+  const all = await findBotComments(octokit, owner, repo, pullNumber);
+  return all.length > 0 ? all[all.length - 1] : null;
 }
 
 export interface StoredReplacement {

@@ -212,13 +212,13 @@ async function run(): Promise<void> {
     }
 
     // ── Post comment ───────────────────────────────────────────────
+    const anyUpdates = results.some(r => r.needsUpdate);
     const commentBody = formatComment(results, validationResults, { autoApplied: !!appliedPrUrl, appliedPrUrl });
-    await postComment(githubToken, commentBody);
+    await postComment(githubToken, commentBody, anyUpdates);
 
     core.info('Wireframe review comment posted.');
 
     // Set outputs
-    const anyUpdates = results.some(r => r.needsUpdate);
     core.setOutput('needs-update', anyUpdates.toString());
     core.setOutput('demo-count', demos.length.toString());
 

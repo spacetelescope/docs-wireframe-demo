@@ -30555,6 +30555,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.formatComment = formatComment;
 exports.postComment = postComment;
 exports.extractReplacements = extractReplacements;
+const core = __importStar(__nccwpck_require__(7484));
 const github = __importStar(__nccwpck_require__(3228));
 const COMMENT_MARKER = '<!-- wireframe-review-bot -->';
 const DATA_START = '<!-- wireframe-suggestions-data:';
@@ -30670,25 +30671,45 @@ function formatComment(results, validationResults, options) {
 }
 /**
  * Post or update the wireframe review comment on the PR.
+ *
+ * - Suggestions (needsUpdate): edit the existing bot comment (or create one)
+ * - No updates / errors: always create a new comment in the timeline
  */
-async function postComment(token, body) {
+async function postComment(token, body, hasSuggestions) {
     const octokit = github.getOctokit(token);
     const { owner, repo } = github.context.repo;
     const pullNumber = github.context.payload.pull_request?.number;
     if (!pullNumber) {
         throw new Error('This action must be run on a pull_request event.');
     }
-    // Look for an existing comment from this action
-    const existingComment = await findExistingComment(octokit, owner, repo, pullNumber);
-    if (existingComment) {
-        await octokit.rest.issues.updateComment({
-            owner,
-            repo,
-            comment_id: existingComment.id,
-            body,
-        });
+    if (hasSuggestions) {
+        // Edit existing comment so suggestions stay consolidated
+        const existingComment = await findExistingComment(octokit, owner, repo, pullNumber);
+        if (existingComment) {
+            await octokit.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existingComment.id,
+                body,
+            });
+        }
+        else {
+            await octokit.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pullNumber,
+                body,
+            });
+        }
     }
     else {
+        // No suggestions / errors — new comment for timeline visibility,
+        // but skip if the latest bot comment already says the same thing.
+        const latest = await findLatestBotComment(octokit, owner, repo, pullNumber);
+        if (latest && latest.body === body) {
+            core.info('Skipping comment — latest bot comment is identical.');
+            return;
+        }
         await octokit.rest.issues.createComment({
             owner,
             repo,
@@ -30697,7 +30718,8 @@ async function postComment(token, body) {
         });
     }
 }
-async function findExistingComment(octokit, owner, repo, pullNumber) {
+async function findBotComments(octokit, owner, repo, pullNumber) {
+    const matches = [];
     let page = 1;
     while (true) {
         const { data: comments } = await octokit.rest.issues.listComments({
@@ -30711,14 +30733,22 @@ async function findExistingComment(octokit, owner, repo, pullNumber) {
             break;
         for (const comment of comments) {
             if (comment.body?.includes(COMMENT_MARKER)) {
-                return { id: comment.id };
+                matches.push({ id: comment.id, body: comment.body });
             }
         }
         if (comments.length < 100)
             break;
         page++;
     }
-    return null;
+    return matches;
+}
+async function findExistingComment(octokit, owner, repo, pullNumber) {
+    const all = await findBotComments(octokit, owner, repo, pullNumber);
+    return all.length > 0 ? { id: all[0].id } : null;
+}
+async function findLatestBotComment(octokit, owner, repo, pullNumber) {
+    const all = await findBotComments(octokit, owner, repo, pullNumber);
+    return all.length > 0 ? all[all.length - 1] : null;
 }
 /**
  * Extract stored replacement data from an existing wireframe-review comment.
@@ -31666,11 +31696,11 @@ async function run() {
             core.info('Wireframe files already changed in this PR — skipping auto-apply.');
         }
         // ── Post comment ───────────────────────────────────────────────
+        const anyUpdates = results.some(r => r.needsUpdate);
         const commentBody = (0, comment_1.formatComment)(results, validationResults, { autoApplied: !!appliedPrUrl, appliedPrUrl });
-        await (0, comment_1.postComment)(githubToken, commentBody);
+        await (0, comment_1.postComment)(githubToken, commentBody, anyUpdates);
         core.info('Wireframe review comment posted.');
         // Set outputs
-        const anyUpdates = results.some(r => r.needsUpdate);
         core.setOutput('needs-update', anyUpdates.toString());
         core.setOutput('demo-count', demos.length.toString());
         // Fail the action if requested and issues were found
