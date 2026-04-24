@@ -30278,10 +30278,10 @@ function parseResponse(raw, label) {
 /**
  * Analyze a single wireframe demo against the PR diff.
  */
-async function analyzeOne(client, artifacts, formattedDiff, scenarioFlags, validationResults, maxPromptTokens) {
+async function analyzeOne(client, artifacts, formattedDiff, scenarioFlags, validationResults, maxPromptTokens, repoRoot) {
     const label = artifacts.label;
     try {
-        const messages = (0, prompts_1.buildAnalysisPrompt)(artifacts, formattedDiff, scenarioFlags, validationResults, maxPromptTokens);
+        const messages = (0, prompts_1.buildAnalysisPrompt)(artifacts, formattedDiff, scenarioFlags, validationResults, maxPromptTokens, repoRoot);
         const response = await client.chat(messages);
         try {
             const result = parseResponse(response, label);
@@ -30326,7 +30326,7 @@ async function analyzeOne(client, artifacts, formattedDiff, scenarioFlags, valid
 /**
  * Analyze all wireframe demos against the PR diff.
  */
-async function analyzeAll(client, allArtifacts, formattedDiff, scenarioFlags, validationResults, maxPromptTokens) {
+async function analyzeAll(client, allArtifacts, formattedDiff, scenarioFlags, validationResults, maxPromptTokens, repoRoot) {
     // Deduplicate by htmlPath — many docs pages reference the same wireframe
     const grouped = new Map();
     for (const a of allArtifacts) {
@@ -30341,7 +30341,7 @@ async function analyzeAll(client, allArtifacts, formattedDiff, scenarioFlags, va
         // Use the first artifact as representative; merge step definitions from all
         const representative = mergeGroupArtifacts(group);
         core.info(`Analyzing wireframe: ${representative.label}`);
-        const result = await analyzeOne(client, representative, formattedDiff, scenarioFlags, validationResults, maxPromptTokens);
+        const result = await analyzeOne(client, representative, formattedDiff, scenarioFlags, validationResults, maxPromptTokens, repoRoot);
         results.push(result);
         if (result.error) {
             core.warning(`Analysis error for ${result.label}: ${result.error}`);
@@ -31644,7 +31644,7 @@ async function run() {
             sourceChanged: diff.relevantFiles.length > 0,
             wireframeChanged: diff.wireframeFiles.length > 0,
         };
-        const results = await (0, analyze_1.analyzeAll)(client, allArtifacts, diff.formattedDiff, scenarioFlags, validationResults, maxPromptTokens);
+        const results = await (0, analyze_1.analyzeAll)(client, allArtifacts, diff.formattedDiff, scenarioFlags, validationResults, maxPromptTokens, repoRoot);
         // ── Auto-apply suggestions if enabled ──────────────────────────
         let appliedPrUrl = null;
         if (autoApply) {
@@ -31981,17 +31981,51 @@ function createLLMClient(provider, model, apiKey, githubToken) {
 /***/ }),
 
 /***/ 6224:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
 
 /**
  * Prompt templates for wireframe review analysis.
  */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.buildAnalysisPrompt = buildAnalysisPrompt;
 const validate_1 = __nccwpck_require__(397);
 const compress_1 = __nccwpck_require__(3723);
+const path = __importStar(__nccwpck_require__(6928));
 const SYSTEM_PROMPT = `You are a wireframe demo review assistant. Analyze PR diffs to determine if wireframe demos in documentation need updating.
 
 Wireframe demos are interactive HTML mockups of an app's UI embedded in docs. Components:
@@ -32019,7 +32053,7 @@ function estimateTokens(text) {
  * Build the analysis prompt for a single wireframe demo.
  * Applies a token budget to ensure the prompt fits within LLM limits.
  */
-function buildAnalysisPrompt(artifacts, formattedDiff, options, validationResults, maxPromptTokens = 100000) {
+function buildAnalysisPrompt(artifacts, formattedDiff, options, validationResults, maxPromptTokens = 100000, repoRoot = '') {
     const messages = [
         { role: 'system', content: SYSTEM_PROMPT },
     ];
@@ -32038,12 +32072,18 @@ function buildAnalysisPrompt(artifacts, formattedDiff, options, validationResult
     }
     if (artifacts.htmlContent) {
         const compressedHtml = (0, compress_1.compressHtml)(artifacts.htmlContent);
-        parts.push(`## Current Wireframe HTML (compressed)\n\`\`\`html\n${compressedHtml}\n\`\`\`\n`);
+        const htmlRelPath = artifacts.demo.htmlPath && repoRoot
+            ? path.relative(repoRoot, artifacts.demo.htmlPath)
+            : artifacts.label;
+        parts.push(`## Current Wireframe HTML: \`${htmlRelPath}\` (compressed)\n\`\`\`html\n${compressedHtml}\n\`\`\`\n`);
     }
     if (artifacts.cssContent) {
         const compressedCss = (0, compress_1.compressCss)(artifacts.cssContent);
         if (compressedCss) {
-            parts.push(`## Current Wireframe CSS (compressed)\n\`\`\`css\n${compressedCss}\n\`\`\`\n`);
+            const cssRelPath = artifacts.demo.cssPath && repoRoot
+                ? path.relative(repoRoot, artifacts.demo.cssPath)
+                : 'wireframe.css';
+            parts.push(`## Current Wireframe CSS: \`${cssRelPath}\` (compressed)\n\`\`\`css\n${compressedCss}\n\`\`\`\n`);
         }
     }
     if (artifacts.jsContent) {

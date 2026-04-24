@@ -6,6 +6,7 @@ import { DemoArtifacts } from './artifacts';
 import { Message } from './llm';
 import { ValidationResult, formatValidationForPrompt } from './validate';
 import { compressHtml, compressCss, compressJs } from './compress';
+import * as path from 'path';
 
 const SYSTEM_PROMPT = `You are a wireframe demo review assistant. Analyze PR diffs to determine if wireframe demos in documentation need updating.
 
@@ -42,6 +43,7 @@ export function buildAnalysisPrompt(
   options: { sourceChanged: boolean; wireframeChanged: boolean },
   validationResults?: ValidationResult[],
   maxPromptTokens: number = 100000,
+  repoRoot: string = '',
 ): Message[] {
   const messages: Message[] = [
     { role: 'system', content: SYSTEM_PROMPT },
@@ -63,13 +65,19 @@ export function buildAnalysisPrompt(
 
   if (artifacts.htmlContent) {
     const compressedHtml = compressHtml(artifacts.htmlContent);
-    parts.push(`## Current Wireframe HTML (compressed)\n\`\`\`html\n${compressedHtml}\n\`\`\`\n`);
+    const htmlRelPath = artifacts.demo.htmlPath && repoRoot
+      ? path.relative(repoRoot, artifacts.demo.htmlPath)
+      : artifacts.label;
+    parts.push(`## Current Wireframe HTML: \`${htmlRelPath}\` (compressed)\n\`\`\`html\n${compressedHtml}\n\`\`\`\n`);
   }
 
   if (artifacts.cssContent) {
     const compressedCss = compressCss(artifacts.cssContent);
     if (compressedCss) {
-      parts.push(`## Current Wireframe CSS (compressed)\n\`\`\`css\n${compressedCss}\n\`\`\`\n`);
+      const cssRelPath = artifacts.demo.cssPath && repoRoot
+        ? path.relative(repoRoot, artifacts.demo.cssPath)
+        : 'wireframe.css';
+      parts.push(`## Current Wireframe CSS: \`${cssRelPath}\` (compressed)\n\`\`\`css\n${compressedCss}\n\`\`\`\n`);
     }
   }
 

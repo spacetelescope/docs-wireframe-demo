@@ -188,7 +188,7 @@ async function run(): Promise<void> {
       sourceChanged: diff.relevantFiles.length > 0,
       wireframeChanged: diff.wireframeFiles.length > 0,
     };
-    const results = await analyzeAll(client, allArtifacts, diff.formattedDiff, scenarioFlags, validationResults, maxPromptTokens);
+    const results = await analyzeAll(client, allArtifacts, diff.formattedDiff, scenarioFlags, validationResults, maxPromptTokens, repoRoot);
 
     // ── Auto-apply suggestions if enabled ──────────────────────────
     let appliedPrUrl: string | null = null;

@@ -73,11 +73,12 @@ async function analyzeOne(
   scenarioFlags: { sourceChanged: boolean; wireframeChanged: boolean },
   validationResults?: ValidationResult[],
   maxPromptTokens?: number,
+  repoRoot?: string,
 ): Promise<AnalysisResult> {
   const label = artifacts.label;
 
   try {
-    const messages = buildAnalysisPrompt(artifacts, formattedDiff, scenarioFlags, validationResults, maxPromptTokens);
+    const messages = buildAnalysisPrompt(artifacts, formattedDiff, scenarioFlags, validationResults, maxPromptTokens, repoRoot);
     const response = await client.chat(messages);
 
     try {
@@ -128,6 +129,7 @@ export async function analyzeAll(
   scenarioFlags: { sourceChanged: boolean; wireframeChanged: boolean },
   validationResults?: ValidationResult[],
   maxPromptTokens?: number,
+  repoRoot?: string,
 ): Promise<AnalysisResult[]> {
   // Deduplicate by htmlPath — many docs pages reference the same wireframe
   const grouped = new Map<string, DemoArtifacts[]>();
@@ -146,7 +148,7 @@ export async function analyzeAll(
     // Use the first artifact as representative; merge step definitions from all
     const representative = mergeGroupArtifacts(group);
     core.info(`Analyzing wireframe: ${representative.label}`);
-    const result = await analyzeOne(client, representative, formattedDiff, scenarioFlags, validationResults, maxPromptTokens);
+    const result = await analyzeOne(client, representative, formattedDiff, scenarioFlags, validationResults, maxPromptTokens, repoRoot);
     results.push(result);
 
     if (result.error) {
