@@ -65,16 +65,16 @@ async function fetchChangedFiles(token: string): Promise<ChangedFile[]> {
   return files;
 }
 
-/** File extensions likely to affect UI layout/styling. */
-const UI_EXTENSIONS = new Set([
+/** File extensions relevant to wireframe demos — only these get diffs sent to the LLM. */
+const WIREFRAME_RELEVANT_EXTENSIONS = new Set([
   '.vue', '.html', '.css', '.scss', '.less',
   '.js', '.ts', '.jsx', '.tsx',
-  '.yaml', '.yml', '.json',
+  '.rst',
 ]);
 
-function isUiRelevant(filename: string): boolean {
+export function isWireframeRelevant(filename: string): boolean {
   const ext = '.' + filename.split('.').pop()?.toLowerCase();
-  return UI_EXTENSIONS.has(ext);
+  return WIREFRAME_RELEVANT_EXTENSIONS.has(ext);
 }
 
 /**
@@ -84,11 +84,8 @@ function formatDiff(
   files: ChangedFile[],
   maxSize: number,
 ): string {
-  // Sort: UI-relevant files first, then by patch size (smaller first for more coverage)
+  // Sort by patch size (smaller first for more coverage)
   const sorted = [...files].sort((a, b) => {
-    const aUi = isUiRelevant(a.filename) ? 0 : 1;
-    const bUi = isUiRelevant(b.filename) ? 0 : 1;
-    if (aUi !== bUi) return aUi - bUi;
     return (a.patch?.length ?? 0) - (b.patch?.length ?? 0);
   });
 
@@ -156,7 +153,8 @@ export async function collectDiff(options: CollectDiffOptions): Promise<DiffResu
     wireframeArtifactPaths.some(p => f.filename === p || f.filename.endsWith('/' + p))
   );
 
-  // Merge relevant source files + wireframe artifact files (deduplicated) for the LLM
+  // Merge relevant source files + wireframe artifact files (deduplicated),
+  // then filter to only wireframe-relevant extensions (vue, html, css, rst, etc.)
   const seen = new Set(relevantFiles.map(f => f.filename));
   const allRelevant = [...relevantFiles];
   for (const wf of wireframeFiles) {
@@ -166,7 +164,8 @@ export async function collectDiff(options: CollectDiffOptions): Promise<DiffResu
     }
   }
 
-  const formattedDiff = formatDiff(allRelevant, maxDiffSize);
+  const wireframeRelevant = allRelevant.filter(f => isWireframeRelevant(f.filename));
+  const formattedDiff = formatDiff(wireframeRelevant, maxDiffSize);
 
   core.info(`PR has ${allFiles.length} changed files, ${relevantFiles.length} source, ${wireframeFiles.length} wireframe artifacts`);
 

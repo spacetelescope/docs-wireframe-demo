@@ -30,13 +30,6 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-/** Truncate text to fit within a token budget, adding a notice if truncated */
-function truncateToTokenBudget(text: string, maxTokens: number, label: string): string {
-  const maxChars = maxTokens * 4;
-  if (text.length <= maxChars) return text;
-  return text.slice(0, maxChars) + `\n\n... (${label} truncated to fit token budget) ...`;
-}
-
 /**
  * Build the analysis prompt for a single wireframe demo.
  * Applies a token budget to ensure the prompt fits within LLM limits.
@@ -94,13 +87,17 @@ export function buildAnalysisPrompt(
   const contentSoFar = parts.join('\n');
   const contentTokens = estimateTokens(contentSoFar);
   const responseReserve = 2000; // reserve tokens for the LLM response
-  const remainingForDiff = maxPromptTokens - systemTokens - contentTokens - responseReserve;
+  const diffTokens = estimateTokens(formattedDiff);
+  const totalTokens = systemTokens + contentTokens + diffTokens + responseReserve;
 
-  const trimmedDiff = remainingForDiff > 500
-    ? truncateToTokenBudget(formattedDiff, remainingForDiff, 'diff')
-    : '(diff omitted — prompt too large)';
+  if (totalTokens > maxPromptTokens) {
+    throw new Error(
+      `Prompt too large for token budget (~${totalTokens} tokens, limit is ${maxPromptTokens}). ` +
+      `Use a provider with a larger context window or increase max-prompt-tokens.`
+    );
+  }
 
-  parts.push(`## Pull Request Diff\n\`\`\`diff\n${trimmedDiff}\n\`\`\`\n`);
+  parts.push(`## Pull Request Diff\n\`\`\`diff\n${formattedDiff}\n\`\`\`\n`);
 
   // Include deterministic validation results if there are issues
   if (validationResults) {

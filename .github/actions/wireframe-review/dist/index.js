@@ -30892,6 +30892,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.isWireframeRelevant = isWireframeRelevant;
 exports.collectDiff = collectDiff;
 const core = __importStar(__nccwpck_require__(7484));
 const github = __importStar(__nccwpck_require__(3228));
@@ -30932,26 +30933,22 @@ async function fetchChangedFiles(token) {
     }
     return files;
 }
-/** File extensions likely to affect UI layout/styling. */
-const UI_EXTENSIONS = new Set([
+/** File extensions relevant to wireframe demos — only these get diffs sent to the LLM. */
+const WIREFRAME_RELEVANT_EXTENSIONS = new Set([
     '.vue', '.html', '.css', '.scss', '.less',
     '.js', '.ts', '.jsx', '.tsx',
-    '.yaml', '.yml', '.json',
+    '.rst',
 ]);
-function isUiRelevant(filename) {
+function isWireframeRelevant(filename) {
     const ext = '.' + filename.split('.').pop()?.toLowerCase();
-    return UI_EXTENSIONS.has(ext);
+    return WIREFRAME_RELEVANT_EXTENSIONS.has(ext);
 }
 /**
  * Prioritize and format diffs for the LLM prompt within a character budget.
  */
 function formatDiff(files, maxSize) {
-    // Sort: UI-relevant files first, then by patch size (smaller first for more coverage)
+    // Sort by patch size (smaller first for more coverage)
     const sorted = [...files].sort((a, b) => {
-        const aUi = isUiRelevant(a.filename) ? 0 : 1;
-        const bUi = isUiRelevant(b.filename) ? 0 : 1;
-        if (aUi !== bUi)
-            return aUi - bUi;
         return (a.patch?.length ?? 0) - (b.patch?.length ?? 0);
     });
     const parts = [];
@@ -31000,7 +30997,8 @@ async function collectDiff(options) {
     });
     // Identify wireframe artifact files that were changed
     const wireframeFiles = allFiles.filter(f => wireframeArtifactPaths.some(p => f.filename === p || f.filename.endsWith('/' + p)));
-    // Merge relevant source files + wireframe artifact files (deduplicated) for the LLM
+    // Merge relevant source files + wireframe artifact files (deduplicated),
+    // then filter to only wireframe-relevant extensions (vue, html, css, rst, etc.)
     const seen = new Set(relevantFiles.map(f => f.filename));
     const allRelevant = [...relevantFiles];
     for (const wf of wireframeFiles) {
@@ -31009,7 +31007,8 @@ async function collectDiff(options) {
             seen.add(wf.filename);
         }
     }
-    const formattedDiff = formatDiff(allRelevant, maxDiffSize);
+    const wireframeRelevant = allRelevant.filter(f => isWireframeRelevant(f.filename));
+    const formattedDiff = formatDiff(wireframeRelevant, maxDiffSize);
     core.info(`PR has ${allFiles.length} changed files, ${relevantFiles.length} source, ${wireframeFiles.length} wireframe artifacts`);
     return { allFiles, relevantFiles, wireframeFiles, formattedDiff };
 }
@@ -31880,13 +31879,6 @@ If needsUpdate is false, set changes to null. For replacements, "search" must be
 function estimateTokens(text) {
     return Math.ceil(text.length / 4);
 }
-/** Truncate text to fit within a token budget, adding a notice if truncated */
-function truncateToTokenBudget(text, maxTokens, label) {
-    const maxChars = maxTokens * 4;
-    if (text.length <= maxChars)
-        return text;
-    return text.slice(0, maxChars) + `\n\n... (${label} truncated to fit token budget) ...`;
-}
 /**
  * Build the analysis prompt for a single wireframe demo.
  * Applies a token budget to ensure the prompt fits within LLM limits.
@@ -31932,11 +31924,13 @@ function buildAnalysisPrompt(artifacts, formattedDiff, options, validationResult
     const contentSoFar = parts.join('\n');
     const contentTokens = estimateTokens(contentSoFar);
     const responseReserve = 2000; // reserve tokens for the LLM response
-    const remainingForDiff = maxPromptTokens - systemTokens - contentTokens - responseReserve;
-    const trimmedDiff = remainingForDiff > 500
-        ? truncateToTokenBudget(formattedDiff, remainingForDiff, 'diff')
-        : '(diff omitted — prompt too large)';
-    parts.push(`## Pull Request Diff\n\`\`\`diff\n${trimmedDiff}\n\`\`\`\n`);
+    const diffTokens = estimateTokens(formattedDiff);
+    const totalTokens = systemTokens + contentTokens + diffTokens + responseReserve;
+    if (totalTokens > maxPromptTokens) {
+        throw new Error(`Prompt too large for token budget (~${totalTokens} tokens, limit is ${maxPromptTokens}). ` +
+            `Use a provider with a larger context window or increase max-prompt-tokens.`);
+    }
+    parts.push(`## Pull Request Diff\n\`\`\`diff\n${formattedDiff}\n\`\`\`\n`);
     // Include deterministic validation results if there are issues
     if (validationResults) {
         const validationSection = (0, validate_1.formatValidationForPrompt)(validationResults);
