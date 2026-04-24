@@ -67,7 +67,10 @@ export function buildAnalysisPrompt(
   }
 
   if (artifacts.cssContent) {
-    parts.push(`## Current Wireframe CSS\n\`\`\`css\n${artifacts.cssContent}\n\`\`\`\n`);
+    const compressedCss = compressCss(artifacts.cssContent);
+    if (compressedCss) {
+      parts.push(`## Current Wireframe CSS (compressed)\n\`\`\`css\n${compressedCss}\n\`\`\`\n`);
+    }
   }
 
   if (artifacts.jsContent) {

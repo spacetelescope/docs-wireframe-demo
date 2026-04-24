@@ -32041,7 +32041,10 @@ function buildAnalysisPrompt(artifacts, formattedDiff, options, validationResult
         parts.push(`## Current Wireframe HTML (compressed)\n\`\`\`html\n${compressedHtml}\n\`\`\`\n`);
     }
     if (artifacts.cssContent) {
-        parts.push(`## Current Wireframe CSS\n\`\`\`css\n${artifacts.cssContent}\n\`\`\`\n`);
+        const compressedCss = (0, compress_1.compressCss)(artifacts.cssContent);
+        if (compressedCss) {
+            parts.push(`## Current Wireframe CSS (compressed)\n\`\`\`css\n${compressedCss}\n\`\`\`\n`);
+        }
     }
     if (artifacts.jsContent) {
         const compressedJs = (0, compress_1.compressJs)(artifacts.jsContent);
