@@ -5,7 +5,7 @@
 import { DemoArtifacts } from './artifacts';
 import { Message } from './llm';
 import { ValidationResult, formatValidationForPrompt } from './validate';
-import { compressHtml, compressCss } from './compress';
+import { compressHtml, compressCss, compressJs } from './compress';
 
 const SYSTEM_PROMPT = `You are a wireframe demo review assistant. Analyze PR diffs to determine if wireframe demos in documentation need updating.
 
@@ -79,7 +79,10 @@ export function buildAnalysisPrompt(
   }
 
   if (artifacts.jsContent) {
-    parts.push(`## Custom Actions JavaScript\n\`\`\`javascript\n${artifacts.jsContent}\n\`\`\`\n`);
+    const compressedJs = compressJs(artifacts.jsContent);
+    if (compressedJs) {
+      parts.push(`## Custom Actions\n${compressedJs}\n`);
+    }
   }
 
   // Note: Step definitions are NOT included in the LLM prompt.

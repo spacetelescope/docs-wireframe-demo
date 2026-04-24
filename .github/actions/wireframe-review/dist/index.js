@@ -30732,6 +30732,7 @@ async function findExistingComment(octokit, owner, repo, pullNumber) {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.compressHtml = compressHtml;
 exports.compressCss = compressCss;
+exports.compressJs = compressJs;
 /** CSS properties meaningful for wireframe review */
 const MEANINGFUL_PROPS = new Set([
     'color', 'background', 'background-color', 'background-image',
@@ -30827,6 +30828,23 @@ function compressHtml(html) {
 /** Compress CSS content (standalone file, not inline) */
 function compressCss(css) {
     return compressStyleBlock(css);
+}
+/**
+ * Compress custom actions JavaScript for LLM prompt inclusion.
+ *
+ * Extracts only the registered action names (from WireframeDemo.registerAction calls)
+ * since the LLM only needs to know *what* actions exist, not their implementation.
+ */
+function compressJs(js) {
+    const actionNames = [];
+    const re = /registerAction\s*\(\s*['"]([^'"]+)['"]/g;
+    let m;
+    while ((m = re.exec(js)) !== null) {
+        actionNames.push(m[1]);
+    }
+    if (actionNames.length === 0)
+        return '';
+    return `Registered custom actions: ${actionNames.join(', ')}`;
 }
 
 
@@ -31901,7 +31919,10 @@ function buildAnalysisPrompt(artifacts, formattedDiff, options, validationResult
         }
     }
     if (artifacts.jsContent) {
-        parts.push(`## Custom Actions JavaScript\n\`\`\`javascript\n${artifacts.jsContent}\n\`\`\`\n`);
+        const compressedJs = (0, compress_1.compressJs)(artifacts.jsContent);
+        if (compressedJs) {
+            parts.push(`## Custom Actions\n${compressedJs}\n`);
+        }
     }
     // Note: Step definitions are NOT included in the LLM prompt.
     // The deterministic validator (validate.ts) handles step/selector checking.

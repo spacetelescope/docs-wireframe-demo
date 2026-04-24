@@ -123,3 +123,20 @@ export function compressHtml(html: string): string {
 export function compressCss(css: string): string {
   return compressStyleBlock(css);
 }
+
+/**
+ * Compress custom actions JavaScript for LLM prompt inclusion.
+ *
+ * Extracts only the registered action names (from WireframeDemo.registerAction calls)
+ * since the LLM only needs to know *what* actions exist, not their implementation.
+ */
+export function compressJs(js: string): string {
+  const actionNames: string[] = [];
+  const re = /registerAction\s*\(\s*['"]([^'"]+)['"]/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(js)) !== null) {
+    actionNames.push(m[1]);
+  }
+  if (actionNames.length === 0) return '';
+  return `Registered custom actions: ${actionNames.join(', ')}`;
+}
