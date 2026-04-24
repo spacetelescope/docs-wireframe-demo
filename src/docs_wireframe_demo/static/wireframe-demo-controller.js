@@ -1431,16 +1431,23 @@
 
     // ── Jump to step (for timeline click navigation) ────────────────────
 
+    /**
+     * Restore the DOM to the state just before `targetIndex`, set
+     * _stepIndex there, then visually play that step (cursor, caption,
+     * highlight) so the user sees what that step does.
+     */
     WireframeDemo.prototype.jumpToStep = function (targetIndex) {
         if (targetIndex < 0 || targetIndex >= this._steps.length) return;
-        if (targetIndex === this._stepIndex) return;
-
-        var wasPlaying = this._playing;
+        if (targetIndex === this._stepIndex && !this._playing) return;
 
         // Stop current timer/animation
         if (this._timer) {
             clearTimeout(this._timer);
             this._timer = null;
+        }
+        if (this._cursorAnim) {
+            cancelAnimationFrame(this._cursorAnim);
+            this._cursorAnim = null;
         }
         this._playing = false;
 
@@ -1448,63 +1455,113 @@
         this._hideCaption();
         if (this._cursorEl) this._hideCursor();
 
-        if (targetIndex > this._stepIndex) {
-            // ── Forward jump ────────────────────────────────────────────
-            // Use cached snapshot if available (from a previous loop or
-            // step-back); otherwise replay intermediate steps.
-            if (this._htmlSnapshots[targetIndex]) {
-                this._contentRoot.innerHTML = this._htmlSnapshots[targetIndex];
-                document.dispatchEvent(new CustomEvent('wireframe-demo-loaded', {
-                    detail: { container: this.container, instance: this }
-                }));
-            } else {
-                for (var i = this._stepIndex; i < targetIndex; i++) {
-                    var step = this._steps[i];
-                    if (this.config.timeline !== false && !this._htmlSnapshots[i]) {
-                        this._htmlSnapshots[i] = this._contentRoot.innerHTML;
-                    }
-                    var el = null;
-                    if (step.target) {
-                        el = this._contentRoot.querySelector(step.target) ||
-                             this.container.querySelector(step.target);
-                    }
-                    this._executeAction(step, el);
-                }
-            }
-            this._stepIndex = targetIndex;
-        } else {
-            // ── Backward jump: restore cached snapshot ──────────────────
-            if (this._htmlSnapshots[targetIndex]) {
-                this._contentRoot.innerHTML = this._htmlSnapshots[targetIndex];
-                document.dispatchEvent(new CustomEvent('wireframe-demo-loaded', {
-                    detail: { container: this.container, instance: this }
-                }));
-            } else {
-                // Safety fallback: restore initial HTML and replay 0..target-1
-                if (this._initialHTML !== undefined) {
-                    this._contentRoot.innerHTML = this._initialHTML;
-                    document.dispatchEvent(new CustomEvent('wireframe-demo-loaded', {
-                        detail: { container: this.container, instance: this }
-                    }));
-                }
-                for (var j = 0; j < targetIndex; j++) {
-                    var s = this._steps[j];
-                    if (this.config.timeline !== false && !this._htmlSnapshots[j]) {
-                        this._htmlSnapshots[j] = this._contentRoot.innerHTML;
-                    }
-                    var e = null;
-                    if (s.target) {
-                        e = this._contentRoot.querySelector(s.target) ||
-                            this.container.querySelector(s.target);
-                    }
-                    this._executeAction(s, e);
-                }
-            }
-            this._stepIndex = targetIndex;
-        }
+        // ── Restore DOM to the state *before* targetIndex ───────────
+        this._restoreDOMBeforeStep(targetIndex);
+        this._stepIndex = targetIndex;
 
         this._updateTimelineDots();
+
+        // ── Now play the target step visually ───────────────────────
+        var self = this;
+        this._playing = true;
         this._updateControlBtn();
+
+        var step = this._steps[targetIndex];
+
+        // Snapshot HTML state before this step (for future jumps)
+        if (this.config.timeline !== false && !this._htmlSnapshots[targetIndex]) {
+            this._htmlSnapshots[targetIndex] = this._contentRoot.innerHTML;
+        }
+
+        // Resolve target element
+        var el = null;
+        var stepTarget = step.target || (step.actions && step.actions.length > 0 ? step.actions[0].target : null);
+        if (stepTarget) {
+            el = this._contentRoot.querySelector(stepTarget) ||
+                 this.container.querySelector(stepTarget);
+        }
+
+        // Show caption
+        this._showCaption(step, el);
+
+        var baseDelay = typeof step.delay === 'number' ? step.delay : 2000;
+        var delay = baseDelay / this._speedFactor;
+
+        var afterAction = function (cursorOverhead) {
+            cursorOverhead = cursorOverhead || 0;
+            if (!self._playing) return;
+            if (self.config.onStepEnd) {
+                self.config.onStepEnd(self._stepIndex, step);
+            }
+            self._stepIndex++;
+            // Pause after the step plays (don't auto-advance)
+            self._playing = false;
+            self._updateControlBtn(true);
+            self._updateTooltip();
+        };
+
+        // Animate cursor, then execute action
+        if (this.config.cursor && el) {
+            var cursorSpeed = this.config.cursorSpeed / this._speedFactor;
+            this._moveCursorTo(el, function () {
+                if (!self._playing) return;
+                self._executeAction(step, el, function () {
+                    afterAction(cursorSpeed);
+                });
+            });
+        } else {
+            if (this.config.cursor && !step.actions && step.action === 'pause') {
+                this._hideCursor();
+            }
+            this._executeAction(step, el, function () {
+                afterAction(0);
+            });
+        }
+    };
+
+    /**
+     * Restore the content DOM to the state just before the given step
+     * index by using cached snapshots or replaying from initial HTML.
+     */
+    WireframeDemo.prototype._restoreDOMBeforeStep = function (targetIndex) {
+        if (this._htmlSnapshots[targetIndex]) {
+            // Direct snapshot exists for this step — use it
+            this._contentRoot.innerHTML = this._htmlSnapshots[targetIndex];
+            document.dispatchEvent(new CustomEvent('wireframe-demo-loaded', {
+                detail: { container: this.container, instance: this }
+            }));
+        } else {
+            // Find the latest snapshot at or before targetIndex
+            var restoreFrom = -1;
+            for (var k = targetIndex - 1; k >= 0; k--) {
+                if (this._htmlSnapshots[k]) {
+                    restoreFrom = k;
+                    break;
+                }
+            }
+            if (restoreFrom >= 0) {
+                this._contentRoot.innerHTML = this._htmlSnapshots[restoreFrom];
+            } else if (this._initialHTML !== undefined) {
+                this._contentRoot.innerHTML = this._initialHTML;
+            }
+            document.dispatchEvent(new CustomEvent('wireframe-demo-loaded', {
+                detail: { container: this.container, instance: this }
+            }));
+            // Replay steps from restoreFrom (or 0) up to targetIndex-1
+            var start = restoreFrom >= 0 ? restoreFrom : 0;
+            for (var j = start; j < targetIndex; j++) {
+                var s = this._steps[j];
+                if (this.config.timeline !== false && !this._htmlSnapshots[j]) {
+                    this._htmlSnapshots[j] = this._contentRoot.innerHTML;
+                }
+                var e = null;
+                if (s.target) {
+                    e = this._contentRoot.querySelector(s.target) ||
+                        this.container.querySelector(s.target);
+                }
+                this._executeAction(s, e);
+            }
+        }
     };
 
     // ── Step execution engine ───────────────────────────────────────────
