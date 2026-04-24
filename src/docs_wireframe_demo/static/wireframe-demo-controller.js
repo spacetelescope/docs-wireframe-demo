@@ -281,6 +281,8 @@
         '  width: var(--wfd-control-size, 44px);',
         '  height: 16px; line-height: 16px;',
         '  text-align: center; color: var(--wfd-control-color, #fff);',
+        '  background: var(--wfd-timeline-bg, rgba(0,0,0,0.5));',
+        '  border-radius: var(--wfd-control-radius, 8px);',
         '  user-select: none;',
         '  opacity: 0; pointer-events: none;',
         '  transition: opacity 0.2s;',
@@ -498,6 +500,8 @@
         this._timelineLeaveTimer = null;
         this._liveRegion = null;
         this._reduceMotion = false;
+        this._userPaused = false;
+        this._restartOverlay = null;
 
         this._init();
     }
@@ -575,6 +579,9 @@
         // Create timeline overlay (after caption, before pauseOnInteraction)
         this._createTimeline();
 
+        // Create restart indicator overlay
+        this._createRestartOverlay();
+
         // Pause on user interaction
         if (this.config.pauseOnInteraction) {
             container.addEventListener('click', function (e) {
@@ -584,6 +591,8 @@
                 if (e.target.closest && e.target.closest('.wfd-timeline')) return;
                 if (e.target.closest && e.target.closest('.wfd-timeline-tooltip')) return;
                 if (self._playing) {
+                    self._userPaused = true;
+                    self._hideCursor();
                     self.pause();
                 }
             }, true); // capture phase
@@ -777,6 +786,7 @@
         if (this._playing) return;
         this._playing = true;
         this._started = true;
+        this._userPaused = false;
         this._updateControlBtn();
         this._updateTooltip();
         this._announce('Playing');
@@ -796,7 +806,9 @@
     };
 
     WireframeDemo.prototype.restart = function () {
+        this._userPaused = false;
         this.pause();
+        this._showRestartOverlay();
         this._clearHighlights();
         this._hideCaption();
         this._resetCursor();
@@ -964,6 +976,27 @@
         this._cursorY = rect.height / 2;
         this._cursorEl.style.transform = 'translate(' + this._cursorX + 'px,' + this._cursorY + 'px)';
         this._cursorEl.style.opacity = '0';
+    };
+
+    // ── Restart overlay ──────────────────────────────────────────────────────
+
+    WireframeDemo.prototype._createRestartOverlay = function () {
+        var el = document.createElement('div');
+        el.className = 'wfd-restart-overlay';
+        var iconWrap = document.createElement('div');
+        iconWrap.className = 'wfd-restart-overlay__icon';
+        iconWrap.innerHTML = ICON_RESTART;
+        el.appendChild(iconWrap);
+        this.container.appendChild(el);
+        this._restartOverlay = el;
+    };
+
+    WireframeDemo.prototype._showRestartOverlay = function () {
+        if (!this._restartOverlay || this._reduceMotion) return;
+        var overlay = this._restartOverlay;
+        overlay.classList.remove('wfd-restart-overlay--active');
+        void overlay.offsetWidth;
+        overlay.classList.add('wfd-restart-overlay--active');
     };
 
     // ── Caption overlay ───────────────────────────────────────────────────────
@@ -1226,6 +1259,7 @@
                 clearTimeout(self._timelineLeaveTimer);
                 self._timelineLeaveTimer = null;
             }
+            if (self._userPaused) return;
             if (self._timelineEl) {
                 self._timelineEl.classList.add('wfd-timeline--visible');
             }
@@ -1574,6 +1608,7 @@
 
             this._resetCursor();
             this._updateTimelineDots();
+            this._showRestartOverlay();
 
             this._timer = setTimeout(function () {
                 self._timer = null;
@@ -1803,6 +1838,10 @@
         if (this._timelineLeaveTimer) {
             clearTimeout(this._timelineLeaveTimer);
             this._timelineLeaveTimer = null;
+        }
+        if (this._restartOverlay && this._restartOverlay.parentNode) {
+            this._restartOverlay.parentNode.removeChild(this._restartOverlay);
+            this._restartOverlay = null;
         }
         this._htmlSnapshots = [];
         this.container.removeAttribute('data-wireframe-initialized');

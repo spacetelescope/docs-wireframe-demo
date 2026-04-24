@@ -163,7 +163,7 @@
     height: var(--wfd-timeline-dot-size, 10px);
     transform: translate(-50%, -50%);
     border-radius: 50%;
-    border: 2px solid var(--wfd-timeline-dot-color, #fff);
+    border: 2px solid var(--wfd-timeline-dot-color, var(--wfd-control-color, #fff));
     background: transparent;
     transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
     pointer-events: none;
@@ -174,7 +174,7 @@
 }
 
 .wfd-timeline__dot--filled::after {
-    background: var(--wfd-timeline-dot-color, #fff);
+    background: var(--wfd-timeline-dot-color, var(--wfd-control-color, #fff));
 }
 
 .wfd-timeline__dot--current::after {
@@ -257,10 +257,48 @@
     background: rgba(255, 255, 255, 0.25);
 }
 
+/* ── Restart overlay ─────────────────────────────────────────────────────── */
+
+@keyframes wfd-restart-expand {
+    0%   { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(2.5); }
+}
+
+.wfd-restart-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 9990;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    opacity: 0;
+}
+
+.wfd-restart-overlay--active {
+    animation: wfd-restart-expand 0.7s ease-out forwards;
+}
+
+.wfd-restart-overlay__icon {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: var(--wfd-control-bg, rgba(0, 0, 0, 0.55));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.wfd-restart-overlay__icon svg {
+    width: 40px;
+    height: 40px;
+    fill: var(--wfd-control-color, #fff);
+}
+
 /* ── Focus indicators ────────────────────────────────────────────── */
 
 .wfd-timeline__dot:focus-visible {
-    outline: 2px solid var(--wfd-timeline-dot-color, #fff);
+    outline: 2px solid var(--wfd-timeline-dot-color, var(--wfd-control-color, #fff));
     outline-offset: 2px;
 }
 
@@ -299,6 +337,10 @@
     .wfd-timeline-tooltip__btn {
         transition: none;
     }
+    .wfd-restart-overlay--active {
+        animation: none;
+        opacity: 0;
+    }
 }
 
 /* Config-driven reduced motion (reduceMotion: true) */
@@ -318,4 +360,8 @@
 .wfd-reduce-motion .wfd-timeline__dot:hover::after,
 .wfd-reduce-motion .wfd-timeline__dot--current::after {
     transform: translate(-50%, -50%);
+}
+.wfd-reduce-motion .wfd-restart-overlay--active {
+    animation: none;
+    opacity: 0;
 }
