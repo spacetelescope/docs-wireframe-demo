@@ -5,6 +5,7 @@
  */
 
 import * as core from '@actions/core';
+import * as github from '@actions/github';
 import * as path from 'path';
 import * as fs from 'fs';
 import { parse as parseYaml } from 'yaml';
@@ -13,7 +14,7 @@ import { readAllArtifacts } from './artifacts';
 import { collectDiff } from './diff';
 import { createLLMClient } from './llm';
 import { analyzeAll } from './analyze';
-import { formatComment, postComment } from './comment';
+import { formatComment, postComment, extractReplacements } from './comment';
 import { validateDemo, ValidationResult } from './validate';
 import { pushSuggestions } from './suggestions';
 
@@ -30,6 +31,12 @@ interface ExplicitConfig {
 
 async function run(): Promise<void> {
   try {
+    // ── Handle /wireframe-apply command ────────────────────────────
+    if (github.context.eventName === 'issue_comment') {
+      await handleApplyCommand();
+      return;
+    }
+
     // ── Read inputs ────────────────────────────────────────────────
     const docsRoot = path.resolve(core.getInput('docs-root') || 'docs/');
     const sourceRoot = core.getInput('source-root') || '.';
@@ -182,22 +189,10 @@ async function run(): Promise<void> {
     };
     const results = await analyzeAll(client, allArtifacts, diff.formattedDiff, scenarioFlags, validationResults, maxPromptTokens);
 
-    // ── Push suggestion PR if changes proposed ─────────────────────
-    let suggestionPrUrl: string | null = null;
-    const hasReplacements = results.some(r =>
-      r.needsUpdate && r.changes?.some(c => c.replacements && c.replacements.length > 0)
-    );
-
-    if (hasReplacements) {
-      const suggestionResult = await pushSuggestions(githubToken, results);
-      suggestionPrUrl = suggestionResult.prUrl;
-      if (suggestionResult.error) {
-        core.warning(`Suggestion PR creation failed: ${suggestionResult.error}`);
-      }
-    }
-
     // ── Post comment ───────────────────────────────────────────────
-    const commentBody = formatComment(results, validationResults, suggestionPrUrl);
+    // Suggestions are embedded as hidden data in the comment.
+    // Users reply /wireframe-apply to trigger the suggestion PR.
+    const commentBody = formatComment(results, validationResults);
     await postComment(githubToken, commentBody);
 
     core.info('Wireframe review comment posted.');
@@ -223,6 +218,94 @@ async function run(): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     core.setFailed(`Wireframe review failed: ${message}`);
+  }
+}
+
+/**
+ * Handle the /wireframe-apply command from an issue comment.
+ * Reads stored replacement data from the bot's review comment and creates a suggestion PR.
+ */
+async function handleApplyCommand(): Promise<void> {
+  const payload = github.context.payload;
+  const commentBody = payload.comment?.body || '';
+
+  if (!commentBody.trim().startsWith('/wireframe-apply')) {
+    core.info('Comment does not start with /wireframe-apply — skipping.');
+    return;
+  }
+
+  const pr = payload.issue?.pull_request;
+  if (!pr) {
+    core.info('Comment is not on a pull request — skipping.');
+    return;
+  }
+
+  const githubToken = process.env.GITHUB_TOKEN || '';
+  if (!githubToken) {
+    core.setFailed('GITHUB_TOKEN environment variable is required.');
+    return;
+  }
+
+  const prNumber = payload.issue!.number;
+  core.info(`Handling /wireframe-apply for PR #${prNumber}`);
+
+  // Extract stored replacements from the bot's earlier review comment
+  const replacements = await extractReplacements(githubToken, prNumber);
+
+  if (replacements.length === 0) {
+    core.warning('No stored suggestions found in the wireframe review comment.');
+    // Post a reply so the user knows
+    const octokit = github.getOctokit(githubToken);
+    const { owner, repo } = github.context.repo;
+    await octokit.rest.issues.createComment({
+      owner,
+      repo,
+      issue_number: prNumber,
+      body: '⚠️ No wireframe suggestions found to apply. The review comment may not have proposed any changes, or it may have been updated.',
+    });
+    return;
+  }
+
+  // Build fake AnalysisResult to reuse pushSuggestions
+  const fakeResults = [{
+    label: 'wireframe-apply',
+    needsUpdate: true,
+    summary: '',
+    changes: replacements.map(r => ({
+      file: r.file,
+      description: '',
+      diff: '',
+      replacements: r.replacements,
+    })),
+    error: null,
+  }];
+
+  const result = await pushSuggestions(githubToken, fakeResults);
+
+  const octokit = github.getOctokit(githubToken);
+  const { owner, repo } = github.context.repo;
+
+  if (result.prUrl) {
+    await octokit.rest.issues.createComment({
+      owner,
+      repo,
+      issue_number: prNumber,
+      body: `✅ Suggestion PR created: ${result.prUrl}\n\nReview and merge it into this branch to apply the wireframe changes.`,
+    });
+  } else if (result.error) {
+    await octokit.rest.issues.createComment({
+      owner,
+      repo,
+      issue_number: prNumber,
+      body: `❌ Failed to create suggestion PR: ${result.error}`,
+    });
+  } else {
+    await octokit.rest.issues.createComment({
+      owner,
+      repo,
+      issue_number: prNumber,
+      body: '⚠️ No replacements could be applied to the current files. The wireframe may have changed since the review.',
+    });
   }
 }
 

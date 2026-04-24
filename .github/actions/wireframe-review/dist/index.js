@@ -30554,12 +30554,15 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.formatComment = formatComment;
 exports.postComment = postComment;
+exports.extractReplacements = extractReplacements;
 const github = __importStar(__nccwpck_require__(3228));
 const COMMENT_MARKER = '<!-- wireframe-review-bot -->';
+const DATA_START = '<!-- wireframe-suggestions-data:';
+const DATA_END = ':wireframe-suggestions-data -->';
 /**
  * Format the analysis results into a PR comment body.
  */
-function formatComment(results, validationResults, suggestionPrUrl) {
+function formatComment(results, validationResults) {
     const parts = [COMMENT_MARKER];
     parts.push('## 🖼️ Wireframe Demo Review\n');
     // Show validation issues first (deterministic, always reliable)
@@ -30646,10 +30649,22 @@ function formatComment(results, validationResults, suggestionPrUrl) {
             parts.push('\n</details>\n');
         }
     }
-    parts.push('\n---\n*Automated by [docs-wireframe-demo](https://github.com/spacetelescope/docs-wireframe-demo) wireframe review action*');
-    if (suggestionPrUrl) {
-        parts.push(`\n\n> 🔀 **Suggested changes have been pushed to a branch:** ${suggestionPrUrl}\n> Review and merge the suggestion PR into this branch if the changes look correct.`);
+    // Embed replacement data for /wireframe-apply
+    const allReplacements = results
+        .filter(r => r.needsUpdate && r.changes)
+        .flatMap(r => r.changes)
+        .filter(c => c.replacements && c.replacements.length > 0);
+    if (allReplacements.length > 0) {
+        parts.push('\n> 💡 **To apply these suggestions**, reply to this PR with `/wireframe-apply`.');
+        parts.push('> A new PR will be created with the proposed changes for you to review and merge.\n');
+        // Encode replacements as hidden data in the comment
+        const data = JSON.stringify(allReplacements.map(c => ({
+            file: c.file,
+            replacements: c.replacements,
+        })));
+        parts.push(`${DATA_START}${Buffer.from(data).toString('base64')}${DATA_END}`);
     }
+    parts.push('\n---\n*Automated by [docs-wireframe-demo](https://github.com/spacetelescope/docs-wireframe-demo) wireframe review action*');
     return parts.join('\n');
 }
 /**
@@ -30703,6 +30718,33 @@ async function findExistingComment(octokit, owner, repo, pullNumber) {
         page++;
     }
     return null;
+}
+/**
+ * Extract stored replacement data from an existing wireframe-review comment.
+ */
+async function extractReplacements(token, pullNumber) {
+    const octokit = github.getOctokit(token);
+    const { owner, repo } = github.context.repo;
+    const existing = await findExistingComment(octokit, owner, repo, pullNumber);
+    if (!existing)
+        return [];
+    const { data: comment } = await octokit.rest.issues.getComment({
+        owner,
+        repo,
+        comment_id: existing.id,
+    });
+    const body = comment.body || '';
+    const startIdx = body.indexOf(DATA_START);
+    const endIdx = body.indexOf(DATA_END);
+    if (startIdx === -1 || endIdx === -1)
+        return [];
+    const encoded = body.slice(startIdx + DATA_START.length, endIdx);
+    try {
+        return JSON.parse(Buffer.from(encoded, 'base64').toString('utf-8'));
+    }
+    catch {
+        return [];
+    }
 }
 
 
@@ -31442,6 +31484,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core = __importStar(__nccwpck_require__(7484));
+const github = __importStar(__nccwpck_require__(3228));
 const path = __importStar(__nccwpck_require__(6928));
 const fs = __importStar(__nccwpck_require__(9896));
 const yaml_1 = __nccwpck_require__(8815);
@@ -31455,6 +31498,11 @@ const validate_1 = __nccwpck_require__(397);
 const suggestions_1 = __nccwpck_require__(6462);
 async function run() {
     try {
+        // ── Handle /wireframe-apply command ────────────────────────────
+        if (github.context.eventName === 'issue_comment') {
+            await handleApplyCommand();
+            return;
+        }
         // ── Read inputs ────────────────────────────────────────────────
         const docsRoot = path.resolve(core.getInput('docs-root') || 'docs/');
         const sourceRoot = core.getInput('source-root') || '.';
@@ -31595,18 +31643,10 @@ async function run() {
             wireframeChanged: diff.wireframeFiles.length > 0,
         };
         const results = await (0, analyze_1.analyzeAll)(client, allArtifacts, diff.formattedDiff, scenarioFlags, validationResults, maxPromptTokens);
-        // ── Push suggestion PR if changes proposed ─────────────────────
-        let suggestionPrUrl = null;
-        const hasReplacements = results.some(r => r.needsUpdate && r.changes?.some(c => c.replacements && c.replacements.length > 0));
-        if (hasReplacements) {
-            const suggestionResult = await (0, suggestions_1.pushSuggestions)(githubToken, results);
-            suggestionPrUrl = suggestionResult.prUrl;
-            if (suggestionResult.error) {
-                core.warning(`Suggestion PR creation failed: ${suggestionResult.error}`);
-            }
-        }
         // ── Post comment ───────────────────────────────────────────────
-        const commentBody = (0, comment_1.formatComment)(results, validationResults, suggestionPrUrl);
+        // Suggestions are embedded as hidden data in the comment.
+        // Users reply /wireframe-apply to trigger the suggestion PR.
+        const commentBody = (0, comment_1.formatComment)(results, validationResults);
         await (0, comment_1.postComment)(githubToken, commentBody);
         core.info('Wireframe review comment posted.');
         // Set outputs
@@ -31631,6 +31671,85 @@ async function run() {
     catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         core.setFailed(`Wireframe review failed: ${message}`);
+    }
+}
+/**
+ * Handle the /wireframe-apply command from an issue comment.
+ * Reads stored replacement data from the bot's review comment and creates a suggestion PR.
+ */
+async function handleApplyCommand() {
+    const payload = github.context.payload;
+    const commentBody = payload.comment?.body || '';
+    if (!commentBody.trim().startsWith('/wireframe-apply')) {
+        core.info('Comment does not start with /wireframe-apply — skipping.');
+        return;
+    }
+    const pr = payload.issue?.pull_request;
+    if (!pr) {
+        core.info('Comment is not on a pull request — skipping.');
+        return;
+    }
+    const githubToken = process.env.GITHUB_TOKEN || '';
+    if (!githubToken) {
+        core.setFailed('GITHUB_TOKEN environment variable is required.');
+        return;
+    }
+    const prNumber = payload.issue.number;
+    core.info(`Handling /wireframe-apply for PR #${prNumber}`);
+    // Extract stored replacements from the bot's earlier review comment
+    const replacements = await (0, comment_1.extractReplacements)(githubToken, prNumber);
+    if (replacements.length === 0) {
+        core.warning('No stored suggestions found in the wireframe review comment.');
+        // Post a reply so the user knows
+        const octokit = github.getOctokit(githubToken);
+        const { owner, repo } = github.context.repo;
+        await octokit.rest.issues.createComment({
+            owner,
+            repo,
+            issue_number: prNumber,
+            body: '⚠️ No wireframe suggestions found to apply. The review comment may not have proposed any changes, or it may have been updated.',
+        });
+        return;
+    }
+    // Build fake AnalysisResult to reuse pushSuggestions
+    const fakeResults = [{
+            label: 'wireframe-apply',
+            needsUpdate: true,
+            summary: '',
+            changes: replacements.map(r => ({
+                file: r.file,
+                description: '',
+                diff: '',
+                replacements: r.replacements,
+            })),
+            error: null,
+        }];
+    const result = await (0, suggestions_1.pushSuggestions)(githubToken, fakeResults);
+    const octokit = github.getOctokit(githubToken);
+    const { owner, repo } = github.context.repo;
+    if (result.prUrl) {
+        await octokit.rest.issues.createComment({
+            owner,
+            repo,
+            issue_number: prNumber,
+            body: `✅ Suggestion PR created: ${result.prUrl}\n\nReview and merge it into this branch to apply the wireframe changes.`,
+        });
+    }
+    else if (result.error) {
+        await octokit.rest.issues.createComment({
+            owner,
+            repo,
+            issue_number: prNumber,
+            body: `❌ Failed to create suggestion PR: ${result.error}`,
+        });
+    }
+    else {
+        await octokit.rest.issues.createComment({
+            owner,
+            repo,
+            issue_number: prNumber,
+            body: '⚠️ No replacements could be applied to the current files. The wireframe may have changed since the review.',
+        });
     }
 }
 run();
@@ -31901,8 +32020,8 @@ function buildAnalysisPrompt(artifacts, formattedDiff, options, validationResult
         parts.push(`> **Scenario**: Both source code and wireframe artifacts were changed. Verify the wireframe updates are sufficient for the source changes.\n`);
     }
     if (artifacts.htmlContent) {
-        const compressedHtml = (0, compress_1.compressHtml)(artifacts.htmlContent);
-        parts.push(`## Current Wireframe HTML (compressed)\n\`\`\`html\n${compressedHtml}\n\`\`\`\n`);
+        parts.push(`## Current Wireframe HTML\n\`\`\`html\n${artifacts.htmlContent}\n\`\`\`\n`);
+        parts.push(`For replacements, use exact text from the HTML above (not compressed).`);
     }
     if (artifacts.cssContent) {
         const compressedCss = (0, compress_1.compressCss)(artifacts.cssContent);
@@ -32002,13 +32121,25 @@ const github = __importStar(__nccwpck_require__(3228));
 async function pushSuggestions(token, results) {
     const octokit = github.getOctokit(token);
     const { owner, repo } = github.context.repo;
+    // Support both pull_request and issue_comment triggers
     const pr = github.context.payload.pull_request;
-    if (!pr) {
-        return { prUrl: null, branch: null, error: 'Not a pull_request event' };
+    const issueNumber = github.context.payload.issue?.number;
+    const prNumber = pr?.number ?? issueNumber;
+    if (!prNumber) {
+        return { prUrl: null, branch: null, error: 'Could not determine PR number' };
     }
-    const prNumber = pr.number;
-    const prHeadRef = pr.head.ref;
-    const prHeadSha = pr.head.sha;
+    // For issue_comment, we need to fetch PR details from the API
+    let prHeadRef;
+    let prHeadSha;
+    if (pr) {
+        prHeadRef = pr.head.ref;
+        prHeadSha = pr.head.sha;
+    }
+    else {
+        const { data: prData } = await octokit.rest.pulls.get({ owner, repo, pull_number: prNumber });
+        prHeadRef = prData.head.ref;
+        prHeadSha = prData.head.sha;
+    }
     // Collect all file changes with replacements
     const changesWithReplacements = results
         .filter(r => r.needsUpdate && r.changes)

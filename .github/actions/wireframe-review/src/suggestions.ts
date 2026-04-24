@@ -29,15 +29,27 @@ export async function pushSuggestions(
 ): Promise<SuggestionPRResult> {
   const octokit = github.getOctokit(token);
   const { owner, repo } = github.context.repo;
-  const pr = github.context.payload.pull_request;
 
-  if (!pr) {
-    return { prUrl: null, branch: null, error: 'Not a pull_request event' };
+  // Support both pull_request and issue_comment triggers
+  const pr = github.context.payload.pull_request;
+  const issueNumber = github.context.payload.issue?.number;
+  const prNumber = pr?.number ?? issueNumber;
+
+  if (!prNumber) {
+    return { prUrl: null, branch: null, error: 'Could not determine PR number' };
   }
 
-  const prNumber = pr.number;
-  const prHeadRef = pr.head.ref as string;
-  const prHeadSha = pr.head.sha as string;
+  // For issue_comment, we need to fetch PR details from the API
+  let prHeadRef: string;
+  let prHeadSha: string;
+  if (pr) {
+    prHeadRef = pr.head.ref as string;
+    prHeadSha = pr.head.sha as string;
+  } else {
+    const { data: prData } = await octokit.rest.pulls.get({ owner, repo, pull_number: prNumber });
+    prHeadRef = prData.head.ref;
+    prHeadSha = prData.head.sha;
+  }
 
   // Collect all file changes with replacements
   const changesWithReplacements = results

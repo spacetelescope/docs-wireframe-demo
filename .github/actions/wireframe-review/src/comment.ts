@@ -7,11 +7,13 @@ import { AnalysisResult } from './analyze';
 import { ValidationResult } from './validate';
 
 const COMMENT_MARKER = '<!-- wireframe-review-bot -->';
+const DATA_START = '<!-- wireframe-suggestions-data:';
+const DATA_END = ':wireframe-suggestions-data -->';
 
 /**
  * Format the analysis results into a PR comment body.
  */
-export function formatComment(results: AnalysisResult[], validationResults?: ValidationResult[], suggestionPrUrl?: string | null): string {
+export function formatComment(results: AnalysisResult[], validationResults?: ValidationResult[]): string {
   const parts: string[] = [COMMENT_MARKER];
   parts.push('## 🖼️ Wireframe Demo Review\n');
 
@@ -108,11 +110,24 @@ export function formatComment(results: AnalysisResult[], validationResults?: Val
     }
   }
 
-  parts.push('\n---\n*Automated by [docs-wireframe-demo](https://github.com/spacetelescope/docs-wireframe-demo) wireframe review action*');
+  // Embed replacement data for /wireframe-apply
+  const allReplacements = results
+    .filter(r => r.needsUpdate && r.changes)
+    .flatMap(r => r.changes!)
+    .filter(c => c.replacements && c.replacements.length > 0);
 
-  if (suggestionPrUrl) {
-    parts.push(`\n\n> 🔀 **Suggested changes have been pushed to a branch:** ${suggestionPrUrl}\n> Review and merge the suggestion PR into this branch if the changes look correct.`);
+  if (allReplacements.length > 0) {
+    parts.push('\n> 💡 **To apply these suggestions**, reply to this PR with `/wireframe-apply`.');
+    parts.push('> A new PR will be created with the proposed changes for you to review and merge.\n');
+    // Encode replacements as hidden data in the comment
+    const data = JSON.stringify(allReplacements.map(c => ({
+      file: c.file,
+      replacements: c.replacements,
+    })));
+    parts.push(`${DATA_START}${Buffer.from(data).toString('base64')}${DATA_END}`);
   }
+
+  parts.push('\n---\n*Automated by [docs-wireframe-demo](https://github.com/spacetelescope/docs-wireframe-demo) wireframe review action*');
 
   return parts.join('\n');
 }
@@ -181,4 +196,40 @@ async function findExistingComment(
   }
 
   return null;
+}
+
+export interface StoredReplacement {
+  file: string;
+  replacements: Array<{ search: string; replace: string }>;
+}
+
+/**
+ * Extract stored replacement data from an existing wireframe-review comment.
+ */
+export async function extractReplacements(
+  token: string,
+  pullNumber: number,
+): Promise<StoredReplacement[]> {
+  const octokit = github.getOctokit(token);
+  const { owner, repo } = github.context.repo;
+  const existing = await findExistingComment(octokit, owner, repo, pullNumber);
+  if (!existing) return [];
+
+  const { data: comment } = await octokit.rest.issues.getComment({
+    owner,
+    repo,
+    comment_id: existing.id,
+  });
+
+  const body = comment.body || '';
+  const startIdx = body.indexOf(DATA_START);
+  const endIdx = body.indexOf(DATA_END);
+  if (startIdx === -1 || endIdx === -1) return [];
+
+  const encoded = body.slice(startIdx + DATA_START.length, endIdx);
+  try {
+    return JSON.parse(Buffer.from(encoded, 'base64').toString('utf-8'));
+  } catch {
+    return [];
+  }
 }

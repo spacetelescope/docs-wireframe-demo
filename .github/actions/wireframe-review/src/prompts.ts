@@ -60,8 +60,8 @@ export function buildAnalysisPrompt(
   }
 
   if (artifacts.htmlContent) {
-    const compressedHtml = compressHtml(artifacts.htmlContent);
-    parts.push(`## Current Wireframe HTML (compressed)\n\`\`\`html\n${compressedHtml}\n\`\`\`\n`);
+    parts.push(`## Current Wireframe HTML\n\`\`\`html\n${artifacts.htmlContent}\n\`\`\`\n`);
+    parts.push(`For replacements, use exact text from the HTML above (not compressed).`);
   }
 
   if (artifacts.cssContent) {
