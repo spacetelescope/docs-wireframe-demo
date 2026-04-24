@@ -50,6 +50,13 @@ inputs:
       PR merges via required status checks.
     required: false
     default: 'false'
+  auto-apply:
+    description: >
+      Automatically push suggested wireframe changes directly to the PR branch.
+      When 'true', suggestions are applied immediately rather than requiring a
+      /wireframe-apply comment. Only works for same-repo PRs (not forks).
+    required: false
+    default: 'false'
 
 runs:
   using: 'node20'

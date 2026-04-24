@@ -13,7 +13,14 @@ const DATA_END = ':wireframe-suggestions-data -->';
 /**
  * Format the analysis results into a PR comment body.
  */
-export function formatComment(results: AnalysisResult[], validationResults?: ValidationResult[]): string {
+export interface CommentOptions {
+  /** Whether suggestions were auto-applied */
+  autoApplied?: boolean;
+  /** URL of the auto-applied suggestion PR */
+  appliedPrUrl?: string | null;
+}
+
+export function formatComment(results: AnalysisResult[], validationResults?: ValidationResult[], options?: CommentOptions): string {
   const parts: string[] = [COMMENT_MARKER];
   parts.push('## 🖼️ Wireframe Demo Review\n');
 
@@ -110,21 +117,24 @@ export function formatComment(results: AnalysisResult[], validationResults?: Val
     }
   }
 
-  // Embed replacement data for /wireframe-apply
   const allReplacements = results
     .filter(r => r.needsUpdate && r.changes)
     .flatMap(r => r.changes!)
     .filter(c => c.replacements && c.replacements.length > 0);
 
   if (allReplacements.length > 0) {
-    parts.push('\n> 💡 **To apply these suggestions**, reply to this PR with `/wireframe-apply`.');
-    parts.push('> A new PR will be created with the proposed changes for you to review and merge.\n');
-    // Encode replacements as hidden data in the comment
-    const data = JSON.stringify(allReplacements.map(c => ({
-      file: c.file,
-      replacements: c.replacements,
-    })));
-    parts.push(`${DATA_START}${Buffer.from(data).toString('base64')}${DATA_END}`);
+    if (options?.autoApplied && options.appliedPrUrl) {
+      parts.push(`\n> 🔀 **Suggestions applied automatically:** ${options.appliedPrUrl}\n> Review and merge the suggestion PR into this branch if the changes look correct.`);
+    } else if (!options?.autoApplied) {
+      parts.push('\n> 💡 **To apply these suggestions**, reply to this PR with `/wireframe-apply`.');
+      parts.push('> A new PR will be created with the proposed changes for you to review and merge.\n');
+      // Encode replacements as hidden data in the comment
+      const data = JSON.stringify(allReplacements.map(c => ({
+        file: c.file,
+        replacements: c.replacements,
+      })));
+      parts.push(`${DATA_START}${Buffer.from(data).toString('base64')}${DATA_END}`);
+    }
   }
 
   parts.push('\n---\n*Automated by [docs-wireframe-demo](https://github.com/spacetelescope/docs-wireframe-demo) wireframe review action*');

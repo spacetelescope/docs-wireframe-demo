@@ -30559,10 +30559,7 @@ const github = __importStar(__nccwpck_require__(3228));
 const COMMENT_MARKER = '<!-- wireframe-review-bot -->';
 const DATA_START = '<!-- wireframe-suggestions-data:';
 const DATA_END = ':wireframe-suggestions-data -->';
-/**
- * Format the analysis results into a PR comment body.
- */
-function formatComment(results, validationResults) {
+function formatComment(results, validationResults, options) {
     const parts = [COMMENT_MARKER];
     parts.push('## 🖼️ Wireframe Demo Review\n');
     // Show validation issues first (deterministic, always reliable)
@@ -30649,20 +30646,24 @@ function formatComment(results, validationResults) {
             parts.push('\n</details>\n');
         }
     }
-    // Embed replacement data for /wireframe-apply
     const allReplacements = results
         .filter(r => r.needsUpdate && r.changes)
         .flatMap(r => r.changes)
         .filter(c => c.replacements && c.replacements.length > 0);
     if (allReplacements.length > 0) {
-        parts.push('\n> 💡 **To apply these suggestions**, reply to this PR with `/wireframe-apply`.');
-        parts.push('> A new PR will be created with the proposed changes for you to review and merge.\n');
-        // Encode replacements as hidden data in the comment
-        const data = JSON.stringify(allReplacements.map(c => ({
-            file: c.file,
-            replacements: c.replacements,
-        })));
-        parts.push(`${DATA_START}${Buffer.from(data).toString('base64')}${DATA_END}`);
+        if (options?.autoApplied && options.appliedPrUrl) {
+            parts.push(`\n> 🔀 **Suggestions applied automatically:** ${options.appliedPrUrl}\n> Review and merge the suggestion PR into this branch if the changes look correct.`);
+        }
+        else if (!options?.autoApplied) {
+            parts.push('\n> 💡 **To apply these suggestions**, reply to this PR with `/wireframe-apply`.');
+            parts.push('> A new PR will be created with the proposed changes for you to review and merge.\n');
+            // Encode replacements as hidden data in the comment
+            const data = JSON.stringify(allReplacements.map(c => ({
+                file: c.file,
+                replacements: c.replacements,
+            })));
+            parts.push(`${DATA_START}${Buffer.from(data).toString('base64')}${DATA_END}`);
+        }
     }
     parts.push('\n---\n*Automated by [docs-wireframe-demo](https://github.com/spacetelescope/docs-wireframe-demo) wireframe review action*');
     return parts.join('\n');
@@ -31513,6 +31514,7 @@ async function run() {
         const maxDiffSize = parseInt(core.getInput('max-diff-size') || '50000', 10);
         const maxPromptTokens = parseInt(core.getInput('max-prompt-tokens') || '100000', 10);
         const failOnError = core.getInput('fail-on-error') === 'true';
+        const autoApply = core.getInput('auto-apply') === 'true';
         const githubToken = process.env.GITHUB_TOKEN || '';
         if (!githubToken) {
             core.setFailed('GITHUB_TOKEN environment variable is required.');
@@ -31643,10 +31645,23 @@ async function run() {
             wireframeChanged: diff.wireframeFiles.length > 0,
         };
         const results = await (0, analyze_1.analyzeAll)(client, allArtifacts, diff.formattedDiff, scenarioFlags, validationResults, maxPromptTokens);
+        // ── Auto-apply suggestions if enabled ──────────────────────────
+        let appliedPrUrl = null;
+        if (autoApply) {
+            const hasReplacements = results.some(r => r.needsUpdate && r.changes?.some(c => c.replacements && c.replacements.length > 0));
+            if (hasReplacements) {
+                const suggestionResult = await (0, suggestions_1.pushSuggestions)(githubToken, results);
+                if (suggestionResult.error) {
+                    core.warning(`Auto-apply failed: ${suggestionResult.error}`);
+                }
+                else if (suggestionResult.prUrl) {
+                    appliedPrUrl = suggestionResult.prUrl;
+                    core.info(`Suggestion PR created: ${appliedPrUrl}`);
+                }
+            }
+        }
         // ── Post comment ───────────────────────────────────────────────
-        // Suggestions are embedded as hidden data in the comment.
-        // Users reply /wireframe-apply to trigger the suggestion PR.
-        const commentBody = (0, comment_1.formatComment)(results, validationResults);
+        const commentBody = (0, comment_1.formatComment)(results, validationResults, { autoApplied: !!appliedPrUrl, appliedPrUrl });
         await (0, comment_1.postComment)(githubToken, commentBody);
         core.info('Wireframe review comment posted.');
         // Set outputs
@@ -31991,6 +32006,8 @@ Scenarios:
 
 Check for: layout changes (toolbar items, panels, sidebars), component changes (new/renamed elements), styling changes (colors, themes), feature changes (plugins, tools), workflow changes, config changes.
 
+When suggesting HTML additions, also check if companion CSS rules (e.g. icon styles, layout rules) are needed in the wireframe CSS file.
+
 Respond with ONLY a JSON object:
 {"needsUpdate": true/false, "summary": "Brief explanation", "changes": [{"file": "path", "description": "what/why", "diff": "unified diff", "replacements": [{"search": "exact text in file", "replace": "new text"}]}]}
 If needsUpdate is false, set changes to null. For replacements, "search" must be exact text matching a unique location.`;
@@ -32024,10 +32041,7 @@ function buildAnalysisPrompt(artifacts, formattedDiff, options, validationResult
         parts.push(`## Current Wireframe HTML (compressed)\n\`\`\`html\n${compressedHtml}\n\`\`\`\n`);
     }
     if (artifacts.cssContent) {
-        const compressedCss = (0, compress_1.compressCss)(artifacts.cssContent);
-        if (compressedCss) {
-            parts.push(`## Current Wireframe CSS (compressed)\n\`\`\`css\n${compressedCss}\n\`\`\`\n`);
-        }
+        parts.push(`## Current Wireframe CSS\n\`\`\`css\n${artifacts.cssContent}\n\`\`\`\n`);
     }
     if (artifacts.jsContent) {
         const compressedJs = (0, compress_1.compressJs)(artifacts.jsContent);

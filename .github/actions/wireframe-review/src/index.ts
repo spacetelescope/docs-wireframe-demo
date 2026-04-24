@@ -47,6 +47,7 @@ async function run(): Promise<void> {
     const maxDiffSize = parseInt(core.getInput('max-diff-size') || '50000', 10);
     const maxPromptTokens = parseInt(core.getInput('max-prompt-tokens') || '100000', 10);
     const failOnError = core.getInput('fail-on-error') === 'true';
+    const autoApply = core.getInput('auto-apply') === 'true';
     const githubToken = process.env.GITHUB_TOKEN || '';
 
     if (!githubToken) {
@@ -189,10 +190,25 @@ async function run(): Promise<void> {
     };
     const results = await analyzeAll(client, allArtifacts, diff.formattedDiff, scenarioFlags, validationResults, maxPromptTokens);
 
+    // ── Auto-apply suggestions if enabled ──────────────────────────
+    let appliedPrUrl: string | null = null;
+    if (autoApply) {
+      const hasReplacements = results.some(r =>
+        r.needsUpdate && r.changes?.some(c => c.replacements && c.replacements.length > 0)
+      );
+      if (hasReplacements) {
+        const suggestionResult = await pushSuggestions(githubToken, results);
+        if (suggestionResult.error) {
+          core.warning(`Auto-apply failed: ${suggestionResult.error}`);
+        } else if (suggestionResult.prUrl) {
+          appliedPrUrl = suggestionResult.prUrl;
+          core.info(`Suggestion PR created: ${appliedPrUrl}`);
+        }
+      }
+    }
+
     // ── Post comment ───────────────────────────────────────────────
-    // Suggestions are embedded as hidden data in the comment.
-    // Users reply /wireframe-apply to trigger the suggestion PR.
-    const commentBody = formatComment(results, validationResults);
+    const commentBody = formatComment(results, validationResults, { autoApplied: !!appliedPrUrl, appliedPrUrl });
     await postComment(githubToken, commentBody);
 
     core.info('Wireframe review comment posted.');
