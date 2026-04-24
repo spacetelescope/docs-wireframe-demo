@@ -191,8 +191,10 @@ async function run(): Promise<void> {
     const results = await analyzeAll(client, allArtifacts, diff.formattedDiff, scenarioFlags, validationResults, maxPromptTokens, repoRoot);
 
     // ── Auto-apply suggestions if enabled ──────────────────────────
+    // Skip auto-apply if wireframe files were already changed in this PR
+    // (e.g. from a previous suggestion PR that was merged).
     let appliedPrUrl: string | null = null;
-    if (autoApply) {
+    if (autoApply && diff.wireframeFiles.length === 0) {
       const hasReplacements = results.some(r =>
         r.needsUpdate && r.changes?.some(c => c.replacements && c.replacements.length > 0)
       );
@@ -205,6 +207,8 @@ async function run(): Promise<void> {
           core.info(`Suggestion PR created: ${appliedPrUrl}`);
         }
       }
+    } else if (autoApply && diff.wireframeFiles.length > 0) {
+      core.info('Wireframe files already changed in this PR — skipping auto-apply.');
     }
 
     // ── Post comment ───────────────────────────────────────────────

@@ -31646,8 +31646,10 @@ async function run() {
         };
         const results = await (0, analyze_1.analyzeAll)(client, allArtifacts, diff.formattedDiff, scenarioFlags, validationResults, maxPromptTokens, repoRoot);
         // ── Auto-apply suggestions if enabled ──────────────────────────
+        // Skip auto-apply if wireframe files were already changed in this PR
+        // (e.g. from a previous suggestion PR that was merged).
         let appliedPrUrl = null;
-        if (autoApply) {
+        if (autoApply && diff.wireframeFiles.length === 0) {
             const hasReplacements = results.some(r => r.needsUpdate && r.changes?.some(c => c.replacements && c.replacements.length > 0));
             if (hasReplacements) {
                 const suggestionResult = await (0, suggestions_1.pushSuggestions)(githubToken, results);
@@ -31659,6 +31661,9 @@ async function run() {
                     core.info(`Suggestion PR created: ${appliedPrUrl}`);
                 }
             }
+        }
+        else if (autoApply && diff.wireframeFiles.length > 0) {
+            core.info('Wireframe files already changed in this PR — skipping auto-apply.');
         }
         // ── Post comment ───────────────────────────────────────────────
         const commentBody = (0, comment_1.formatComment)(results, validationResults, { autoApplied: !!appliedPrUrl, appliedPrUrl });
@@ -32068,7 +32073,7 @@ function buildAnalysisPrompt(artifacts, formattedDiff, options, validationResult
         parts.push(`> **Scenario**: Source code was changed but wireframe artifacts were not. Determine if the source changes require wireframe updates.\n`);
     }
     else {
-        parts.push(`> **Scenario**: Both source code and wireframe artifacts were changed. Verify the wireframe updates are sufficient for the source changes.\n`);
+        parts.push(`> **Scenario**: Both source code and wireframe artifacts were changed in this PR. The wireframe HTML below already reflects updates from this PR. Only suggest further changes if the existing wireframe updates are **insufficient** for the source changes. If the wireframe already covers the changes, set needsUpdate to false.\n`);
     }
     if (artifacts.htmlContent) {
         const compressedHtml = (0, compress_1.compressHtml)(artifacts.htmlContent);

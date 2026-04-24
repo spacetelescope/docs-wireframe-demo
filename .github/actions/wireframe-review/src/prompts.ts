@@ -60,7 +60,7 @@ export function buildAnalysisPrompt(
   } else if (options.sourceChanged && !options.wireframeChanged) {
     parts.push(`> **Scenario**: Source code was changed but wireframe artifacts were not. Determine if the source changes require wireframe updates.\n`);
   } else {
-    parts.push(`> **Scenario**: Both source code and wireframe artifacts were changed. Verify the wireframe updates are sufficient for the source changes.\n`);
+    parts.push(`> **Scenario**: Both source code and wireframe artifacts were changed in this PR. The wireframe HTML below already reflects updates from this PR. Only suggest further changes if the existing wireframe updates are **insufficient** for the source changes. If the wireframe already covers the changes, set needsUpdate to false.\n`);
   }
 
   if (artifacts.htmlContent) {
