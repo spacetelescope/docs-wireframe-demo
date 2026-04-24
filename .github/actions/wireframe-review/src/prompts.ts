@@ -21,6 +21,8 @@ Scenarios:
 
 Check for: layout changes (toolbar items, panels, sidebars), component changes (new/renamed elements), styling changes (colors, themes), feature changes (plugins, tools), workflow changes, config changes.
 
+When suggesting HTML additions, also check if companion CSS rules (e.g. icon styles, layout rules) are needed in the wireframe CSS file.
+
 Respond with ONLY a JSON object:
 {"needsUpdate": true/false, "summary": "Brief explanation", "changes": [{"file": "path", "description": "what/why", "diff": "unified diff", "replacements": [{"search": "exact text in file", "replace": "new text"}]}]}
 If needsUpdate is false, set changes to null. For replacements, "search" must be exact text matching a unique location.`;
