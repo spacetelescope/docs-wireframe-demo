@@ -259,22 +259,25 @@
         '  width: 20px; height: 20px;',
         '  border-radius: var(--wfd-control-radius, 8px);',
         '  flex-shrink: 0;',
+        '  position: static;',
         '}',
         '.wfd-control-btn--speed svg {',
         '  width: 14px; height: 14px;',
         '}',
         '.wfd-speed-row > .wfd-control-btn--speed::after {',
-        '  content: attr(data-tooltip);',
-        '  position: absolute; top: 50%;',
-        '  right: calc(var(--wfd-control-size, 44px) / 2 + 8px);',
+        '  display: none;',
+        '}',
+        '.wfd-speed-tooltip {',
+        '  position: absolute; right: 100%; top: 50%;',
         '  transform: translateY(-50%);',
+        '  margin-right: 8px;',
         '  background: var(--wfd-control-tooltip-bg, rgba(0,0,0,0.8));',
         '  color: var(--wfd-control-tooltip-color, #fff);',
         '  padding: 4px 10px; border-radius: 4px; font-size: 12px;',
         '  font-weight: 600; white-space: nowrap; pointer-events: none;',
         '  opacity: 0; transition: opacity 0.2s;',
         '}',
-        '.wfd-control-btn--speed:hover::after { opacity: 1; }',
+        '.wfd-speed-tooltip--visible { opacity: 1; }',
         /* Speed label below play button */
         '.wfd-speed-label {',
         '  font-size: 11px; font-weight: 600;',
@@ -337,18 +340,35 @@
         var speedRow = document.createElement('div');
         speedRow.className = 'wfd-speed-row';
 
+        var speedTooltip = document.createElement('span');
+        speedTooltip.className = 'wfd-speed-tooltip';
+
         var slowBtn = document.createElement('button');
         slowBtn.className = 'wfd-control-btn wfd-control-btn--speed';
         slowBtn.setAttribute('aria-label', 'Slow down');
-        slowBtn.setAttribute('data-tooltip', 'Slower');
         slowBtn.innerHTML = ICON_SPEED_DOWN;
 
         var fastBtn = document.createElement('button');
         fastBtn.className = 'wfd-control-btn wfd-control-btn--speed';
         fastBtn.setAttribute('aria-label', 'Speed up');
-        fastBtn.setAttribute('data-tooltip', 'Faster');
         fastBtn.innerHTML = ICON_SPEED_UP;
 
+        slowBtn.addEventListener('mouseenter', function () {
+            speedTooltip.textContent = 'Slower';
+            speedTooltip.classList.add('wfd-speed-tooltip--visible');
+        });
+        slowBtn.addEventListener('mouseleave', function () {
+            speedTooltip.classList.remove('wfd-speed-tooltip--visible');
+        });
+        fastBtn.addEventListener('mouseenter', function () {
+            speedTooltip.textContent = 'Faster';
+            speedTooltip.classList.add('wfd-speed-tooltip--visible');
+        });
+        fastBtn.addEventListener('mouseleave', function () {
+            speedTooltip.classList.remove('wfd-speed-tooltip--visible');
+        });
+
+        speedRow.appendChild(speedTooltip);
         speedRow.appendChild(slowBtn);
         speedRow.appendChild(fastBtn);
         shadow.appendChild(speedRow);
