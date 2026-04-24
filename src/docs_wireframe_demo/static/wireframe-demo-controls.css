@@ -14,6 +14,7 @@
 [data-wireframe-demo] {
     position: relative;
     overflow: hidden;
+    isolation: isolate;
 }
 
 /* ── Highlight animation applied to targeted elements ────────────── */
