@@ -43,6 +43,13 @@ inputs:
       small context windows (e.g., 6000 for GitHub Models free tier).
     required: false
     default: '100000'
+  fail-on-error:
+    description: >
+      Whether to fail the action (non-zero exit) when validation errors are found
+      or the LLM suggests wireframe updates are needed. Set to 'true' to block
+      PR merges via required status checks.
+    required: false
+    default: 'false'
 
 runs:
   using: 'node20'

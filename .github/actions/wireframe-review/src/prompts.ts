@@ -5,84 +5,25 @@
 import { DemoArtifacts } from './artifacts';
 import { Message } from './llm';
 import { ValidationResult, formatValidationForPrompt } from './validate';
+import { compressHtml, compressCss } from './compress';
 
-const SYSTEM_PROMPT = `You are a wireframe demo review assistant. Your job is to analyze source code changes in a pull request and determine whether they affect any wireframe demos used in the project's documentation.
+const SYSTEM_PROMPT = `You are a wireframe demo review assistant. Analyze PR diffs to determine if wireframe demos in documentation need updating.
 
-## What are wireframe demos?
+Wireframe demos are interactive HTML mockups of an app's UI embedded in docs. Components:
+- **Wireframe HTML**: Self-contained HTML with inline CSS representing the app layout. You receive a compressed version preserving structure, IDs, classes, data attributes, and meaningful styles (colors, layout, borders, dimensions).
+- **Custom actions JS** (optional): App-specific actions via WireframeDemo.registerAction(name, handler)
+- **Custom CSS** (optional)
 
-Wireframe demos are simplified, interactive HTML representations of an application's UI, embedded in documentation. They show users how the app works through animated step-by-step walkthroughs. Each demo consists of:
+Scenarios:
+1. Source changed, wireframe not — Do changes affect UI layout/behavior the wireframe should reflect?
+2. Wireframe changed, source not — Check wireframe changes for correctness.
+3. Both changed — Verify wireframe updates are sufficient.
 
-1. **Wireframe HTML** — A self-contained HTML file with inline CSS that represents the app's layout (toolbar, sidebar, viewers, panels, etc.). This is a simplified mockup, not the real app.
+Check for: layout changes (toolbar items, panels, sidebars), component changes (new/renamed elements), styling changes (colors, themes), feature changes (plugins, tools), workflow changes, config changes.
 
-2. **Step definitions** — A sequence of actions that animate the wireframe to demonstrate workflows. Steps use either shorthand strings or JSON objects:
-
-   Shorthand: \`target@delay:action=value|caption text\`
-   JSON: \`{"target": "#selector", "action": "click", "delay": 1500, "caption": "Description"}\`
-   Multi-action: \`{"actions": [...], "delay": 1500, "caption": "Description"}\`
-
-3. **Custom actions JS** (optional) — JavaScript that registers app-specific actions via \`WireframeDemo.registerAction(name, handler)\`. These go beyond built-in actions (click, toggle-class, set-value, etc.) to handle app-specific behaviors.
-
-4. **Custom CSS** (optional) — Additional styling for the wireframe.
-
-## Built-in actions
-
-- \`highlight\` — Pulse animation on element
-- \`click\` — Trigger click event
-- \`add-class\`, \`remove-class\`, \`toggle-class\` — CSS class manipulation
-- \`set-attribute\`, \`remove-attribute\` — DOM attribute manipulation
-- \`set-value\` — Set form field value
-- \`set-text\` — Set element text content
-- \`set-html\` — Set element innerHTML
-- \`scroll-into-view\` — Smooth scroll to element
-- \`dispatch-event\` — Dispatch custom DOM event
-- \`pause\` — Wait without acting
-
-## Your task
-
-You will be given:
-- The current wireframe HTML, CSS, custom actions JS, and step definitions (as they exist on the PR branch)
-- The PR diff (which may include source code changes, wireframe changes, or both)
-
-The PR may fall into one of three scenarios:
-1. **Source code changed, wireframe not changed** — Determine if the source changes affect UI layout/behavior in ways the wireframe should reflect. If so, propose wireframe updates.
-2. **Wireframe changed, source code not changed** — The wireframe was updated directly. Check whether the changes look correct and consistent (valid HTML structure, steps reference elements that exist, actions are registered, etc.).
-3. **Both source and wireframe changed** — The author may have already updated the wireframe to match source changes. Verify the wireframe updates are sufficient and consistent with the source diff. If additional changes are needed, propose them.
-
-Check for these types of impacts:
-- **Layout changes**: toolbar items added/removed/reordered, new panels/sidebars, viewer area restructuring
-- **Component changes**: new UI elements, renamed elements, changed element hierarchy
-- **Styling changes**: theme colors, spacing, fonts that the wireframe should reflect
-- **Feature changes**: new plugins, new tools, renamed features that appear in the wireframe
-- **Workflow changes**: the demo steps show a workflow that no longer matches the app behavior
-- **Configuration changes**: app config files that define toolbar/tray/menu structure
-
-## Output format
-
-Respond with ONLY a JSON object (no markdown fences, no explanation outside the JSON):
-
-{
-  "needsUpdate": true/false,
-  "summary": "Brief explanation of your analysis",
-  "changes": [
-    {
-      "file": "path/to/file.html",
-      "description": "What to change and why",
-      "diff": "unified diff showing the change",
-      "replacements": [
-        {
-          "search": "exact text to find in the current file",
-          "replace": "replacement text"
-        }
-      ]
-    }
-  ]
-}
-
-If needsUpdate is false, set changes to null.
-If needsUpdate is true, provide specific, actionable changes with real diffs.
-For the diff field, use unified diff format (--- a/file, +++ b/file, @@ line numbers @@).
-For the replacements field, provide search/replace pairs where "search" is the EXACT text to find in the current file and "replace" is the full replacement. Each replacement must match a unique location in the file. Include enough context in the search string to be unambiguous.
-Keep wireframe changes consistent with the simplified, mockup style of the existing wireframe.`;
+Respond with ONLY a JSON object:
+{"needsUpdate": true/false, "summary": "Brief explanation", "changes": [{"file": "path", "description": "what/why", "diff": "unified diff", "replacements": [{"search": "exact text in file", "replace": "new text"}]}]}
+If needsUpdate is false, set changes to null. For replacements, "search" must be exact text matching a unique location.`;
 
 /** Rough token estimation: ~4 chars per token for English/code text */
 function estimateTokens(text: string): number {
@@ -126,20 +67,24 @@ export function buildAnalysisPrompt(
   }
 
   if (artifacts.htmlContent) {
-    parts.push(`## Current Wireframe HTML\n\`\`\`html\n${artifacts.htmlContent}\n\`\`\`\n`);
+    const compressedHtml = compressHtml(artifacts.htmlContent);
+    parts.push(`## Current Wireframe HTML (compressed)\n\`\`\`html\n${compressedHtml}\n\`\`\`\n`);
   }
 
   if (artifacts.cssContent) {
-    parts.push(`## Current Wireframe CSS\n\`\`\`css\n${artifacts.cssContent}\n\`\`\`\n`);
+    const compressedCss = compressCss(artifacts.cssContent);
+    if (compressedCss) {
+      parts.push(`## Current Wireframe CSS (compressed)\n\`\`\`css\n${compressedCss}\n\`\`\`\n`);
+    }
   }
 
   if (artifacts.jsContent) {
     parts.push(`## Custom Actions JavaScript\n\`\`\`javascript\n${artifacts.jsContent}\n\`\`\`\n`);
   }
 
-  if (artifacts.stepsContent) {
-    parts.push(`## Current Step Definitions\n\`\`\`json\n${artifacts.stepsContent}\n\`\`\`\n`);
-  }
+  // Note: Step definitions are NOT included in the LLM prompt.
+  // The deterministic validator (validate.ts) handles step/selector checking.
+  // The LLM focuses on whether the wireframe HTML structure needs updating.
 
   // Apply token budget: system prompt + wireframe content takes priority, diff is trimmed first
   const systemTokens = estimateTokens(SYSTEM_PROMPT);

@@ -71,12 +71,41 @@ export function formatComment(results: AnalysisResult[], validationResults?: Val
 
   // Errors
   if (errors.length > 0) {
-    parts.push('<details>');
-    parts.push(`<summary>⚠️ ${errors.length} wireframe${errors.length === 1 ? '' : 's'} could not be analyzed</summary>\n`);
-    for (const r of errors) {
-      parts.push(`- **${r.label}**: ${r.error}`);
+    const tokenErrors = errors.filter(r => r.error?.includes('too large') || r.error?.includes('token'));
+    const otherErrors = errors.filter(r => !r.error?.includes('too large') && !r.error?.includes('token'));
+
+    if (tokenErrors.length > 0) {
+      parts.push(`### ⚠️ LLM Context Limit Exceeded\n`);
+      parts.push(`${tokenErrors.length} wireframe(s) could not be analyzed because the prompt exceeded the model's token limit.\n`);
+      parts.push(`<details>`);
+      parts.push(`<summary>How to fix this</summary>\n`);
+      parts.push(`The default provider (\`github-models\` with \`gpt-4o\`) has an 8,000 token limit on the free tier.`);
+      parts.push(`You can resolve this by:\n`);
+      parts.push(`1. **Use a model with a larger context window** — add an \`api-key\` and switch to the \`openai\` or \`anthropic\` provider:`);
+      parts.push(`   \`\`\`yaml`);
+      parts.push(`   - uses: spacetelescope/docs-wireframe-demo/.github/actions/wireframe-review@main`);
+      parts.push(`     env:`);
+      parts.push(`       GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}`);
+      parts.push(`     with:`);
+      parts.push(`       provider: openai`);
+      parts.push(`       api-key: \${{ secrets.OPENAI_API_KEY }}`);
+      parts.push(`   \`\`\``);
+      parts.push(`2. **Lower \`max-prompt-tokens\`** to more aggressively truncate content (may reduce analysis quality):`);
+      parts.push(`   \`\`\`yaml`);
+      parts.push(`     with:`);
+      parts.push(`       max-prompt-tokens: '4000'`);
+      parts.push(`   \`\`\``);
+      parts.push(`\n</details>\n`);
     }
-    parts.push('\n</details>\n');
+
+    if (otherErrors.length > 0) {
+      parts.push('<details>');
+      parts.push(`<summary>⚠️ ${otherErrors.length} wireframe${otherErrors.length === 1 ? '' : 's'} could not be analyzed</summary>\n`);
+      for (const r of otherErrors) {
+        parts.push(`- **${r.label}**: ${r.error}`);
+      }
+      parts.push('\n</details>\n');
+    }
   }
 
   parts.push('\n---\n*Automated by [docs-wireframe-demo](https://github.com/spacetelescope/docs-wireframe-demo) wireframe review action*');

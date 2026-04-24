@@ -39,6 +39,7 @@ async function run(): Promise<void> {
     const apiKey = core.getInput('api-key') || '';
     const maxDiffSize = parseInt(core.getInput('max-diff-size') || '50000', 10);
     const maxPromptTokens = parseInt(core.getInput('max-prompt-tokens') || '100000', 10);
+    const failOnError = core.getInput('fail-on-error') === 'true';
     const githubToken = process.env.GITHUB_TOKEN || '';
 
     if (!githubToken) {
@@ -118,7 +119,15 @@ async function run(): Promise<void> {
     core.info(`Read artifacts for ${allArtifacts.length} demo(s)`);
 
     // ── Validate steps against wireframe HTML ──────────────────────
-    const validationResults: ValidationResult[] = allArtifacts.map(a => validateDemo(a));
+    // Deduplicate artifacts by htmlPath before validating
+    const uniqueForValidation = new Map<string, typeof allArtifacts[0]>();
+    for (const a of allArtifacts) {
+      const key = a.demo.htmlPath || a.label;
+      if (!uniqueForValidation.has(key)) {
+        uniqueForValidation.set(key, a);
+      }
+    }
+    const validationResults: ValidationResult[] = Array.from(uniqueForValidation.values()).map(a => validateDemo(a));
     const validationIssues = validationResults.filter(r => !r.valid);
     if (validationIssues.length > 0) {
       core.warning(`Found ${validationIssues.reduce((n, r) => n + r.issues.length, 0)} validation issue(s) across ${validationIssues.length} demo(s)`);
@@ -197,6 +206,19 @@ async function run(): Promise<void> {
     const anyUpdates = results.some(r => r.needsUpdate);
     core.setOutput('needs-update', anyUpdates.toString());
     core.setOutput('demo-count', demos.length.toString());
+
+    // Fail the action if requested and issues were found
+    if (failOnError) {
+      const totalValidationErrors = validationIssues.reduce((n, r) => n + r.issues.filter(i => i.severity === 'error').length, 0);
+      const analysisErrors = results.filter(r => r.error).length;
+      if (totalValidationErrors > 0) {
+        core.setFailed(`${totalValidationErrors} validation error(s) found in wireframe step definitions.`);
+      } else if (anyUpdates) {
+        core.setFailed(`Wireframe updates needed — see PR comment for details.`);
+      } else if (analysisErrors > 0) {
+        core.setFailed(`${analysisErrors} wireframe(s) could not be analyzed (LLM errors).`);
+      }
+    }
 
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

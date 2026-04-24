@@ -162,6 +162,33 @@ export async function analyzeAll(
 }
 
 /**
+ * Limit merged steps to a reasonable size.
+ * Includes as many unique step sets as fit within ~4000 chars,
+ * then summarizes the rest.
+ */
+function limitStepsContent(stepSets: string[]): string {
+  const MAX_CHARS = 4000;
+  const parts: string[] = [];
+  let totalChars = 0;
+  let included = 0;
+
+  for (const steps of stepSets) {
+    if (totalChars + steps.length > MAX_CHARS && included > 0) {
+      break;
+    }
+    parts.push(steps);
+    totalChars += steps.length;
+    included++;
+  }
+
+  if (included < stepSets.length) {
+    parts.push(`\n(... ${stepSets.length - included} additional step definition sets omitted for brevity)`);
+  }
+
+  return parts.join('\n\n--- (steps from another page) ---\n\n');
+}
+
+/**
  * Merge a group of artifacts that share the same wireframe HTML.
  * Combines step definitions from all demos so the LLM sees all
  * step variations in one request.
@@ -178,10 +205,19 @@ function mergeGroupArtifacts(group: DemoArtifacts[]): DemoArtifacts {
   }
 
   const mergedSteps = allSteps.size > 0
-    ? Array.from(allSteps).join('\n\n--- (steps from another page) ---\n\n')
+    ? limitStepsContent(Array.from(allSteps))
     : null;
 
-  const sources = group.map(a => a.demo.sourceFile).join(', ');
+  const sources = group.map(a => {
+    const p = a.demo.sourceFile;
+    // Use just the filename, not the full absolute path
+    return p.split('/').pop() || p;
+  });
+  // Deduplicate source filenames and limit to first 5
+  const uniqueSources = [...new Set(sources)];
+  const sourceList = uniqueSources.length > 5
+    ? uniqueSources.slice(0, 5).join(', ') + `, +${uniqueSources.length - 5} more`
+    : uniqueSources.join(', ');
   const htmlBase = first.demo.htmlPath
     ? require('path').basename(first.demo.htmlPath)
     : 'unknown';
@@ -189,6 +225,6 @@ function mergeGroupArtifacts(group: DemoArtifacts[]): DemoArtifacts {
   return {
     ...first,
     stepsContent: mergedSteps,
-    label: `${htmlBase} (referenced by ${group.length} pages: ${sources})`,
+    label: `${htmlBase} (referenced by ${group.length} pages, e.g. ${sourceList})`,
   };
 }
