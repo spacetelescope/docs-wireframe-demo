@@ -25,9 +25,9 @@ Respond with ONLY a JSON object:
 {"needsUpdate": true/false, "summary": "Brief explanation", "changes": [{"file": "path", "description": "what/why", "diff": "unified diff", "replacements": [{"search": "exact text in file", "replace": "new text"}]}]}
 If needsUpdate is false, set changes to null. For replacements, "search" must be exact text matching a unique location.`;
 
-/** Rough token estimation: ~4 chars per token for English/code text */
+/** Rough token estimation: ~3 chars per token for HTML/code on gpt-4o */
 function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
+  return Math.ceil(text.length / 3);
 }
 
 /**
@@ -60,8 +60,8 @@ export function buildAnalysisPrompt(
   }
 
   if (artifacts.htmlContent) {
-    parts.push(`## Current Wireframe HTML\n\`\`\`html\n${artifacts.htmlContent}\n\`\`\`\n`);
-    parts.push(`For replacements, use exact text from the HTML above (not compressed).`);
+    const compressedHtml = compressHtml(artifacts.htmlContent);
+    parts.push(`## Current Wireframe HTML (compressed)\n\`\`\`html\n${compressedHtml}\n\`\`\`\n`);
   }
 
   if (artifacts.cssContent) {
@@ -82,13 +82,13 @@ export function buildAnalysisPrompt(
   // The deterministic validator (validate.ts) handles step/selector checking.
   // The LLM focuses on whether the wireframe HTML structure needs updating.
 
-  // Apply token budget: system prompt + wireframe content takes priority, diff is trimmed first
+  // Apply token budget: max-prompt-tokens limits what we SEND (input tokens only).
+  // The model's context window handles the response separately.
   const systemTokens = estimateTokens(SYSTEM_PROMPT);
   const contentSoFar = parts.join('\n');
   const contentTokens = estimateTokens(contentSoFar);
-  const responseReserve = 2000; // reserve tokens for the LLM response
   const diffTokens = estimateTokens(formattedDiff);
-  const totalTokens = systemTokens + contentTokens + diffTokens + responseReserve;
+  const totalTokens = systemTokens + contentTokens + diffTokens;
 
   if (totalTokens > maxPromptTokens) {
     throw new Error(

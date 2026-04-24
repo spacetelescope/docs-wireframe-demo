@@ -31994,9 +31994,9 @@ Check for: layout changes (toolbar items, panels, sidebars), component changes (
 Respond with ONLY a JSON object:
 {"needsUpdate": true/false, "summary": "Brief explanation", "changes": [{"file": "path", "description": "what/why", "diff": "unified diff", "replacements": [{"search": "exact text in file", "replace": "new text"}]}]}
 If needsUpdate is false, set changes to null. For replacements, "search" must be exact text matching a unique location.`;
-/** Rough token estimation: ~4 chars per token for English/code text */
+/** Rough token estimation: ~3 chars per token for HTML/code on gpt-4o */
 function estimateTokens(text) {
-    return Math.ceil(text.length / 4);
+    return Math.ceil(text.length / 3);
 }
 /**
  * Build the analysis prompt for a single wireframe demo.
@@ -32020,8 +32020,8 @@ function buildAnalysisPrompt(artifacts, formattedDiff, options, validationResult
         parts.push(`> **Scenario**: Both source code and wireframe artifacts were changed. Verify the wireframe updates are sufficient for the source changes.\n`);
     }
     if (artifacts.htmlContent) {
-        parts.push(`## Current Wireframe HTML\n\`\`\`html\n${artifacts.htmlContent}\n\`\`\`\n`);
-        parts.push(`For replacements, use exact text from the HTML above (not compressed).`);
+        const compressedHtml = (0, compress_1.compressHtml)(artifacts.htmlContent);
+        parts.push(`## Current Wireframe HTML (compressed)\n\`\`\`html\n${compressedHtml}\n\`\`\`\n`);
     }
     if (artifacts.cssContent) {
         const compressedCss = (0, compress_1.compressCss)(artifacts.cssContent);
@@ -32038,13 +32038,13 @@ function buildAnalysisPrompt(artifacts, formattedDiff, options, validationResult
     // Note: Step definitions are NOT included in the LLM prompt.
     // The deterministic validator (validate.ts) handles step/selector checking.
     // The LLM focuses on whether the wireframe HTML structure needs updating.
-    // Apply token budget: system prompt + wireframe content takes priority, diff is trimmed first
+    // Apply token budget: max-prompt-tokens limits what we SEND (input tokens only).
+    // The model's context window handles the response separately.
     const systemTokens = estimateTokens(SYSTEM_PROMPT);
     const contentSoFar = parts.join('\n');
     const contentTokens = estimateTokens(contentSoFar);
-    const responseReserve = 2000; // reserve tokens for the LLM response
     const diffTokens = estimateTokens(formattedDiff);
-    const totalTokens = systemTokens + contentTokens + diffTokens + responseReserve;
+    const totalTokens = systemTokens + contentTokens + diffTokens;
     if (totalTokens > maxPromptTokens) {
         throw new Error(`Prompt too large for token budget (~${totalTokens} tokens, limit is ${maxPromptTokens}). ` +
             `Use a provider with a larger context window or increase max-prompt-tokens.`);
