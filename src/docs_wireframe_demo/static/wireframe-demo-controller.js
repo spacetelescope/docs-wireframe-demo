@@ -575,6 +575,7 @@
 
         // Parse steps
         this._steps = parseSteps(this.config.steps);
+        this._initSteps = parseSteps(this.config.initSteps);
 
         // Inject highlight style
         ensureHighlightStyle();
@@ -636,7 +637,10 @@
             }
             // Save initial HTML for restart/repeat reset
             this._initialHTML = this._contentRoot.innerHTML;
-            self._onReady();
+            self._runInitSteps(function () {
+                self._initialHTML = self._contentRoot.innerHTML;
+                self._onReady();
+            });
         }
     };
 
@@ -649,19 +653,46 @@
             })
             .then(function (html) {
                 self._contentRoot.innerHTML = html;
-                // Save the initial HTML for restart resets
-                self._initialHTML = html;
-                // Dispatch event so external code can react
+                // Dispatch event so external code can react (sets up toolbar handlers, etc.)
                 document.dispatchEvent(new CustomEvent('wireframe-demo-loaded', {
                     detail: { container: self.container, instance: self }
                 }));
-                if (callback) callback();
+                // Run init steps silently, then snapshot the post-init state as the restart baseline
+                self._runInitSteps(function () {
+                    self._initialHTML = self._contentRoot.innerHTML;
+                    if (callback) callback();
+                });
             })
             .catch(function (err) {
                 console.error('[WireframeDemo] ' + err.message);
                 self._contentRoot.innerHTML =
                     '<p style="color:red;padding:16px;">Error loading demo HTML: ' + err.message + '</p>';
             });
+    };
+
+    /**
+     * Run initSteps synchronously (no delay, no highlight, no caption).
+     * Called after HTML loads and wireframe-demo-loaded has fired, before
+     * _initialHTML is snapshotted and before _onReady()/autoStart.
+     */
+    WireframeDemo.prototype._runInitSteps = function (done) {
+        var steps = this._initSteps || [];
+        for (var i = 0; i < steps.length; i++) {
+            var step = steps[i];
+            // Force noHighlight so actions skip visual highlighting
+            var initStep = {};
+            for (var k in step) { if (Object.prototype.hasOwnProperty.call(step, k)) initStep[k] = step[k]; }
+            initStep.noHighlight = true;
+            initStep.delay = 0;
+            var target = step.target || (step.actions && step.actions.length ? step.actions[0].target : null);
+            var el = null;
+            if (target) {
+                el = this._contentRoot.querySelector(target) || this.container.querySelector(target);
+            }
+            // Pass null callback so _executeAction runs synchronously (no sub-action timeouts)
+            this._executeAction(initStep, el, null);
+        }
+        if (done) done();
     };
 
     WireframeDemo.prototype._onReady = function () {
