@@ -24,7 +24,7 @@ Add a single workflow file to your repository:
        runs-on: ubuntu-latest
        permissions:
          pull-requests: write
-         contents: read
+         contents: write
          models: read
        steps:
          - uses: actions/checkout@v4
@@ -48,6 +48,12 @@ That's it. The action will:
 
 4. **Post a PR comment** summarizing whether each wireframe needs updating, with
    specific suggested diffs.
+
+.. note::
+
+   Use ``contents: write`` (not ``contents: read``) if you plan to enable
+   ``auto-apply`` or ``/wireframe-apply``, since the action needs to push
+   commits and create branches.
 
 
 How It Works
@@ -147,6 +153,22 @@ Inputs
    * - ``max-diff-size``
      - ``50000``
      - Maximum diff size (characters) sent to the LLM. Larger diffs are summarized.
+   * - ``max-prompt-tokens``
+     - ``100000``
+     - Maximum total prompt tokens for each LLM request. The diff is truncated to
+       fit within this budget after the wireframe content. Lower this for providers
+       with small context windows (e.g., ``8000`` for GitHub Models free tier).
+   * - ``fail-on-error``
+     - ``false``
+     - Fail the action (non-zero exit) when validation errors are found or the LLM
+       suggests wireframe updates are needed. Set to ``true`` to block PR merges
+       via required status checks.
+   * - ``auto-apply``
+     - ``false``
+     - Automatically push suggested wireframe changes directly to the PR branch.
+       When ``true``, a suggestion PR is created targeting the PR branch rather than
+       requiring a ``/wireframe-apply`` comment. Only works for same-repo PRs
+       (not forks). See `Auto-Apply`_ for details.
 
 
 LLM Provider Setup
@@ -264,7 +286,7 @@ For `jdaviz <https://github.com/spacetelescope/jdaviz>`_, which uses
        runs-on: ubuntu-latest
        permissions:
          pull-requests: write
-         contents: read
+         contents: write
          models: read
        steps:
          - uses: actions/checkout@v4
@@ -274,6 +296,8 @@ For `jdaviz <https://github.com/spacetelescope/jdaviz>`_, which uses
            with:
              docs-root: docs/
              source-root: jdaviz/
+             fail-on-error: 'true'
+             auto-apply: 'true'
 
 The action auto-discovers the wireframe demo in ``docs/_templates/index.html``,
 resolves ``jdaviz-wireframe.html`` (found via filename search in the repo),
@@ -323,12 +347,96 @@ without posting a comment.
 PR Comment Format
 ------------------
 
-The action posts a single PR comment (updated on subsequent pushes) that includes:
+The action posts a PR comment that includes:
 
 - A summary of whether each wireframe needs updating
 - Collapsible sections with suggested diffs for each file
 - A list of wireframes that need no changes
-- Warnings for any analysis errors
+- Warnings for any analysis errors (including token-limit exceeded guidance)
 
-The comment uses a hidden HTML marker to find and update itself on subsequent
-pushes, avoiding duplicate comments.
+**Comment update behavior:**
+
+- **Suggestions** (wireframe updates needed) — The action edits a single
+  existing comment, keeping all suggestions consolidated in one place. On
+  subsequent pushes, the same comment is updated with the latest analysis.
+
+- **No changes needed / errors** — A new comment is created as a separate
+  timeline entry, so it's clear when the status changed. If the latest bot
+  comment already says the same thing (e.g., two consecutive "no changes needed"
+  runs), the duplicate is skipped.
+
+
+Applying Suggestions
+---------------------
+
+There are two ways to apply the wireframe changes suggested by the action:
+
+Auto-Apply
+^^^^^^^^^^^
+
+Set ``auto-apply: true`` to have the action automatically create a suggestion PR
+targeting the PR branch whenever the LLM identifies needed wireframe changes:
+
+.. code-block:: yaml
+
+   - uses: spacetelescope/docs-wireframe-demo/.github/actions/wireframe-review@main
+     env:
+       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+     with:
+       auto-apply: 'true'
+
+When auto-apply is enabled:
+
+1. The action analyzes the PR diff as usual.
+2. If the LLM suggests wireframe changes, a new branch
+   (``wireframe-suggestions/pr-<N>``) is created with the suggested edits
+   applied, and a PR is opened targeting the original PR branch.
+3. The review comment notes that suggestions were applied automatically and
+   links to the suggestion PR.
+4. If the PR already includes wireframe file changes, auto-apply is **skipped**
+   to avoid overwriting intentional manual edits.
+
+After reviewing the suggestion PR, merge it into your PR branch to accept the
+changes. The next push will trigger a re-run, which should confirm no further
+changes are needed.
+
+Manual Apply via Comment
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Without ``auto-apply``, the action embeds the suggested replacements as hidden
+data in the PR comment. Reply to the PR with ``/wireframe-apply`` to trigger a
+workflow that reads the suggestions and creates a PR with the changes.
+
+.. note::
+
+   The ``/wireframe-apply`` command requires an ``issue_comment`` trigger in the
+   workflow **on the default branch**. For most setups, ``auto-apply`` is simpler
+   and recommended.
+
+
+Token Limits
+-------------
+
+The GitHub Models free tier has an 8,000-token limit. The action compresses
+wireframe artifacts (stripping non-structural CSS, extracting only custom action
+names from JS) to fit within this budget, but large wireframes or diffs may
+still exceed it.
+
+If you hit the token limit, the PR comment will include guidance. Your options:
+
+1. **Use a provider with a larger context window** — Switch to ``openai`` or
+   ``anthropic`` with an API key:
+
+   .. code-block:: yaml
+
+      with:
+        provider: openai
+        api-key: ${{ secrets.OPENAI_API_KEY }}
+
+2. **Lower ``max-prompt-tokens``** to more aggressively truncate content (may
+   reduce analysis quality):
+
+   .. code-block:: yaml
+
+      with:
+        max-prompt-tokens: '4000'
