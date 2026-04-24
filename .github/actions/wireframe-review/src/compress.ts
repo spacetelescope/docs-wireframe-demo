@@ -27,7 +27,6 @@ const MEANINGFUL_PROPS = new Set([
   'gap', 'row-gap', 'column-gap',
   'align-items', 'justify-content', 'align-self', 'justify-self',
   'order', 'float', 'clear',
-  'margin', 'padding',
 ]);
 
 /** Compress inline style attribute to only meaningful properties */
