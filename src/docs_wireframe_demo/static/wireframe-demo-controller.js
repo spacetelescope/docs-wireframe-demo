@@ -259,12 +259,15 @@
         '  width: 20px; height: 20px;',
         '  border-radius: var(--wfd-control-radius, 8px);',
         '  flex-shrink: 0;',
+        '  position: static;',
         '}',
         '.wfd-control-btn--speed svg {',
         '  width: 14px; height: 14px;',
         '}',
-        '.wfd-control-btn--speed::after {',
-        '  content: attr(data-tooltip);',
+        '.wfd-speed-row > .wfd-control-btn--speed::after {',
+        '  display: none;',
+        '}',
+        '.wfd-speed-tooltip {',
         '  position: absolute; right: 100%; top: 50%;',
         '  transform: translateY(-50%);',
         '  margin-right: 8px;',
@@ -274,13 +277,15 @@
         '  font-weight: 600; white-space: nowrap; pointer-events: none;',
         '  opacity: 0; transition: opacity 0.2s;',
         '}',
-        '.wfd-control-btn--speed:hover::after { opacity: 1; }',
+        '.wfd-speed-tooltip--visible { opacity: 1; }',
         /* Speed label below play button */
         '.wfd-speed-label {',
         '  font-size: 11px; font-weight: 600;',
         '  width: var(--wfd-control-size, 44px);',
         '  height: 16px; line-height: 16px;',
         '  text-align: center; color: var(--wfd-control-color, #fff);',
+        '  background: var(--wfd-timeline-bg, rgba(0,0,0,0.5));',
+        '  border-radius: var(--wfd-control-radius, 8px);',
         '  user-select: none;',
         '  opacity: 0; pointer-events: none;',
         '  transition: opacity 0.2s;',
@@ -335,18 +340,35 @@
         var speedRow = document.createElement('div');
         speedRow.className = 'wfd-speed-row';
 
+        var speedTooltip = document.createElement('span');
+        speedTooltip.className = 'wfd-speed-tooltip';
+
         var slowBtn = document.createElement('button');
         slowBtn.className = 'wfd-control-btn wfd-control-btn--speed';
         slowBtn.setAttribute('aria-label', 'Slow down');
-        slowBtn.setAttribute('data-tooltip', 'Slower');
         slowBtn.innerHTML = ICON_SPEED_DOWN;
 
         var fastBtn = document.createElement('button');
         fastBtn.className = 'wfd-control-btn wfd-control-btn--speed';
         fastBtn.setAttribute('aria-label', 'Speed up');
-        fastBtn.setAttribute('data-tooltip', 'Faster');
         fastBtn.innerHTML = ICON_SPEED_UP;
 
+        slowBtn.addEventListener('mouseenter', function () {
+            speedTooltip.textContent = 'Slower';
+            speedTooltip.classList.add('wfd-speed-tooltip--visible');
+        });
+        slowBtn.addEventListener('mouseleave', function () {
+            speedTooltip.classList.remove('wfd-speed-tooltip--visible');
+        });
+        fastBtn.addEventListener('mouseenter', function () {
+            speedTooltip.textContent = 'Faster';
+            speedTooltip.classList.add('wfd-speed-tooltip--visible');
+        });
+        fastBtn.addEventListener('mouseleave', function () {
+            speedTooltip.classList.remove('wfd-speed-tooltip--visible');
+        });
+
+        speedRow.appendChild(speedTooltip);
         speedRow.appendChild(slowBtn);
         speedRow.appendChild(fastBtn);
         shadow.appendChild(speedRow);
@@ -498,6 +520,8 @@
         this._timelineLeaveTimer = null;
         this._liveRegion = null;
         this._reduceMotion = false;
+        this._userPaused = false;
+        this._restartOverlay = null;
 
         this._init();
     }
@@ -551,6 +575,7 @@
 
         // Parse steps
         this._steps = parseSteps(this.config.steps);
+        this._initSteps = parseSteps(this.config.initSteps);
 
         // Inject highlight style
         ensureHighlightStyle();
@@ -575,6 +600,9 @@
         // Create timeline overlay (after caption, before pauseOnInteraction)
         this._createTimeline();
 
+        // Create restart indicator overlay
+        this._createRestartOverlay();
+
         // Pause on user interaction
         if (this.config.pauseOnInteraction) {
             container.addEventListener('click', function (e) {
@@ -584,6 +612,8 @@
                 if (e.target.closest && e.target.closest('.wfd-timeline')) return;
                 if (e.target.closest && e.target.closest('.wfd-timeline-tooltip')) return;
                 if (self._playing) {
+                    self._userPaused = true;
+                    self._hideCursor();
                     self.pause();
                 }
             }, true); // capture phase
@@ -607,7 +637,10 @@
             }
             // Save initial HTML for restart/repeat reset
             this._initialHTML = this._contentRoot.innerHTML;
-            self._onReady();
+            self._runInitSteps(function () {
+                self._initialHTML = self._contentRoot.innerHTML;
+                self._onReady();
+            });
         }
     };
 
@@ -620,19 +653,46 @@
             })
             .then(function (html) {
                 self._contentRoot.innerHTML = html;
-                // Save the initial HTML for restart resets
-                self._initialHTML = html;
-                // Dispatch event so external code can react
+                // Dispatch event so external code can react (sets up toolbar handlers, etc.)
                 document.dispatchEvent(new CustomEvent('wireframe-demo-loaded', {
                     detail: { container: self.container, instance: self }
                 }));
-                if (callback) callback();
+                // Run init steps silently, then snapshot the post-init state as the restart baseline
+                self._runInitSteps(function () {
+                    self._initialHTML = self._contentRoot.innerHTML;
+                    if (callback) callback();
+                });
             })
             .catch(function (err) {
                 console.error('[WireframeDemo] ' + err.message);
                 self._contentRoot.innerHTML =
                     '<p style="color:red;padding:16px;">Error loading demo HTML: ' + err.message + '</p>';
             });
+    };
+
+    /**
+     * Run initSteps synchronously (no delay, no highlight, no caption).
+     * Called after HTML loads and wireframe-demo-loaded has fired, before
+     * _initialHTML is snapshotted and before _onReady()/autoStart.
+     */
+    WireframeDemo.prototype._runInitSteps = function (done) {
+        var steps = this._initSteps || [];
+        for (var i = 0; i < steps.length; i++) {
+            var step = steps[i];
+            // Force noHighlight so actions skip visual highlighting
+            var initStep = {};
+            for (var k in step) { if (Object.prototype.hasOwnProperty.call(step, k)) initStep[k] = step[k]; }
+            initStep.noHighlight = true;
+            initStep.delay = 0;
+            var target = step.target || (step.actions && step.actions.length ? step.actions[0].target : null);
+            var el = null;
+            if (target) {
+                el = this._contentRoot.querySelector(target) || this.container.querySelector(target);
+            }
+            // Pass null callback so _executeAction runs synchronously (no sub-action timeouts)
+            this._executeAction(initStep, el, null);
+        }
+        if (done) done();
     };
 
     WireframeDemo.prototype._onReady = function () {
@@ -777,6 +837,7 @@
         if (this._playing) return;
         this._playing = true;
         this._started = true;
+        this._userPaused = false;
         this._updateControlBtn();
         this._updateTooltip();
         this._announce('Playing');
@@ -796,7 +857,9 @@
     };
 
     WireframeDemo.prototype.restart = function () {
+        this._userPaused = false;
         this.pause();
+        this._showRestartOverlay();
         this._clearHighlights();
         this._hideCaption();
         this._resetCursor();
@@ -964,6 +1027,27 @@
         this._cursorY = rect.height / 2;
         this._cursorEl.style.transform = 'translate(' + this._cursorX + 'px,' + this._cursorY + 'px)';
         this._cursorEl.style.opacity = '0';
+    };
+
+    // ── Restart overlay ──────────────────────────────────────────────────────
+
+    WireframeDemo.prototype._createRestartOverlay = function () {
+        var el = document.createElement('div');
+        el.className = 'wfd-restart-overlay';
+        var iconWrap = document.createElement('div');
+        iconWrap.className = 'wfd-restart-overlay__icon';
+        iconWrap.innerHTML = ICON_RESTART;
+        el.appendChild(iconWrap);
+        this.container.appendChild(el);
+        this._restartOverlay = el;
+    };
+
+    WireframeDemo.prototype._showRestartOverlay = function () {
+        if (!this._restartOverlay || this._reduceMotion) return;
+        var overlay = this._restartOverlay;
+        overlay.classList.remove('wfd-restart-overlay--active');
+        void overlay.offsetWidth;
+        overlay.classList.add('wfd-restart-overlay--active');
     };
 
     // ── Caption overlay ───────────────────────────────────────────────────────
@@ -1226,6 +1310,7 @@
                 clearTimeout(self._timelineLeaveTimer);
                 self._timelineLeaveTimer = null;
             }
+            if (self._userPaused) return;
             if (self._timelineEl) {
                 self._timelineEl.classList.add('wfd-timeline--visible');
             }
@@ -1397,16 +1482,23 @@
 
     // ── Jump to step (for timeline click navigation) ────────────────────
 
+    /**
+     * Restore the DOM to the state just before `targetIndex`, set
+     * _stepIndex there, then visually play that step (cursor, caption,
+     * highlight) so the user sees what that step does.
+     */
     WireframeDemo.prototype.jumpToStep = function (targetIndex) {
         if (targetIndex < 0 || targetIndex >= this._steps.length) return;
-        if (targetIndex === this._stepIndex) return;
-
-        var wasPlaying = this._playing;
+        if (targetIndex === this._stepIndex && !this._playing) return;
 
         // Stop current timer/animation
         if (this._timer) {
             clearTimeout(this._timer);
             this._timer = null;
+        }
+        if (this._cursorAnim) {
+            cancelAnimationFrame(this._cursorAnim);
+            this._cursorAnim = null;
         }
         this._playing = false;
 
@@ -1414,63 +1506,124 @@
         this._hideCaption();
         if (this._cursorEl) this._hideCursor();
 
-        if (targetIndex > this._stepIndex) {
-            // ── Forward jump ────────────────────────────────────────────
-            // Use cached snapshot if available (from a previous loop or
-            // step-back); otherwise replay intermediate steps.
-            if (this._htmlSnapshots[targetIndex]) {
-                this._contentRoot.innerHTML = this._htmlSnapshots[targetIndex];
-                document.dispatchEvent(new CustomEvent('wireframe-demo-loaded', {
-                    detail: { container: this.container, instance: this }
-                }));
-            } else {
-                for (var i = this._stepIndex; i < targetIndex; i++) {
-                    var step = this._steps[i];
-                    if (this.config.timeline !== false && !this._htmlSnapshots[i]) {
-                        this._htmlSnapshots[i] = this._contentRoot.innerHTML;
-                    }
-                    var el = null;
-                    if (step.target) {
-                        el = this._contentRoot.querySelector(step.target) ||
-                             this.container.querySelector(step.target);
-                    }
-                    this._executeAction(step, el);
-                }
-            }
-            this._stepIndex = targetIndex;
-        } else {
-            // ── Backward jump: restore cached snapshot ──────────────────
-            if (this._htmlSnapshots[targetIndex]) {
-                this._contentRoot.innerHTML = this._htmlSnapshots[targetIndex];
-                document.dispatchEvent(new CustomEvent('wireframe-demo-loaded', {
-                    detail: { container: this.container, instance: this }
-                }));
-            } else {
-                // Safety fallback: restore initial HTML and replay 0..target-1
-                if (this._initialHTML !== undefined) {
-                    this._contentRoot.innerHTML = this._initialHTML;
-                    document.dispatchEvent(new CustomEvent('wireframe-demo-loaded', {
-                        detail: { container: this.container, instance: this }
-                    }));
-                }
-                for (var j = 0; j < targetIndex; j++) {
-                    var s = this._steps[j];
-                    if (this.config.timeline !== false && !this._htmlSnapshots[j]) {
-                        this._htmlSnapshots[j] = this._contentRoot.innerHTML;
-                    }
-                    var e = null;
-                    if (s.target) {
-                        e = this._contentRoot.querySelector(s.target) ||
-                            this.container.querySelector(s.target);
-                    }
-                    this._executeAction(s, e);
-                }
-            }
-            this._stepIndex = targetIndex;
-        }
+        // ── Restore DOM to the state *before* targetIndex ───────────
+        this._restoreDOMBeforeStep(targetIndex);
+        this._stepIndex = targetIndex;
 
         this._updateTimelineDots();
+
+        // ── Now play the target step visually ───────────────────────
+        var self = this;
+        this._playing = true;
         this._updateControlBtn();
+
+        var step = this._steps[targetIndex];
+
+        // Snapshot HTML state before this step (for future jumps)
+        if (this.config.timeline !== false && !this._htmlSnapshots[targetIndex]) {
+            this._htmlSnapshots[targetIndex] = this._contentRoot.innerHTML;
+        }
+
+        // Resolve target element
+        var el = null;
+        var stepTarget = step.target || (step.actions && step.actions.length > 0 ? step.actions[0].target : null);
+        if (stepTarget) {
+            el = this._contentRoot.querySelector(stepTarget) ||
+                 this.container.querySelector(stepTarget);
+        }
+
+        // Show caption
+        this._showCaption(step, el);
+
+        var baseDelay = typeof step.delay === 'number' ? step.delay : 2000;
+        var delay = baseDelay / this._speedFactor;
+
+        var afterAction = function (cursorOverhead) {
+            cursorOverhead = cursorOverhead || 0;
+            if (!self._playing) return;
+            if (self.config.onStepEnd) {
+                self.config.onStepEnd(self._stepIndex, step);
+            }
+            self._stepIndex++;
+            // Pause after the step plays (don't auto-advance)
+            self._playing = false;
+            self._updateControlBtn(true);
+            self._updateTooltip();
+        };
+
+        // Animate cursor, then execute action
+        if (this.config.cursor && el) {
+            var cursorSpeed = this.config.cursorSpeed / this._speedFactor;
+            this._moveCursorTo(el, function () {
+                if (!self._playing) return;
+                self._executeAction(step, el, function () {
+                    afterAction(cursorSpeed);
+                });
+            });
+        } else {
+            if (this.config.cursor && !step.actions && step.action === 'pause') {
+                this._hideCursor();
+            }
+            this._executeAction(step, el, function () {
+                afterAction(0);
+            });
+        }
+    };
+
+    /**
+     * Restore the content DOM to the state just before the given step
+     * index by using cached snapshots or replaying from initial HTML.
+     */
+    WireframeDemo.prototype._restoreDOMBeforeStep = function (targetIndex) {
+        if (this._htmlSnapshots[targetIndex]) {
+            // Direct snapshot exists for this step — use it
+            this._contentRoot.innerHTML = this._htmlSnapshots[targetIndex];
+            document.dispatchEvent(new CustomEvent('wireframe-demo-loaded', {
+                detail: { container: this.container, instance: this }
+            }));
+        } else {
+            // Find the latest snapshot at or before targetIndex
+            var restoreFrom = -1;
+            for (var k = targetIndex - 1; k >= 0; k--) {
+                if (this._htmlSnapshots[k]) {
+                    restoreFrom = k;
+                    break;
+                }
+            }
+            if (restoreFrom >= 0) {
+                this._contentRoot.innerHTML = this._htmlSnapshots[restoreFrom];
+            } else if (this._initialHTML !== undefined) {
+                this._contentRoot.innerHTML = this._initialHTML;
+            }
+            document.dispatchEvent(new CustomEvent('wireframe-demo-loaded', {
+                detail: { container: this.container, instance: this }
+            }));
+            // Replay steps from restoreFrom (or 0) up to targetIndex-1
+            // Skip highlight-only steps since they don't change DOM state
+            var start = restoreFrom >= 0 ? restoreFrom : 0;
+            for (var j = start; j < targetIndex; j++) {
+                var s = this._steps[j];
+                // Skip pure highlight steps during fast-forward replay
+                var skipStep = false;
+                if (s.actions && Array.isArray(s.actions)) {
+                    skipStep = s.actions.every(function (sub) {
+                        return sub.action === 'highlight';
+                    });
+                } else {
+                    skipStep = (!s.action || s.action === 'highlight' || s.action === 'pause');
+                }
+                if (skipStep) continue;
+                if (this.config.timeline !== false && !this._htmlSnapshots[j]) {
+                    this._htmlSnapshots[j] = this._contentRoot.innerHTML;
+                }
+                var e = null;
+                if (s.target) {
+                    e = this._contentRoot.querySelector(s.target) ||
+                        this.container.querySelector(s.target);
+                }
+                this._executeAction(s, e);
+            }
+        }
     };
 
     // ── Step execution engine ───────────────────────────────────────────
@@ -1574,6 +1727,7 @@
 
             this._resetCursor();
             this._updateTimelineDots();
+            this._showRestartOverlay();
 
             this._timer = setTimeout(function () {
                 self._timer = null;
@@ -1613,8 +1767,7 @@
                     caption: step.caption,
                     captionOptions: step.captionOptions
                 };
-                self._executeSingleAction(sub.action, sub.value, subEl, syntheticStep);
-
+                self._executeSingleAction(sub.action, sub.value, subEl, syntheticStep, function () {
                 // If this sub-action has a delay and there is a callback
                 // (i.e. we are in live playback, not a jump/replay), schedule
                 // the next sub-action after the delay.
@@ -1628,21 +1781,22 @@
                 } else {
                     executeSub(index + 1);
                 }
+                });
             };
 
             executeSub(0);
             return;
         }
 
-        this._executeSingleAction(step.action, step.value, el, step);
-        if (callback) callback();
+        this._executeSingleAction(step.action, step.value, el, step, callback);
     };
 
-    WireframeDemo.prototype._executeSingleAction = function (action, value, el, step) {
+    WireframeDemo.prototype._executeSingleAction = function (action, value, el, step, callback) {
 
         // Check custom actions first
         if (_customActions[action]) {
             _customActions[action].call(this, step, el, this._contentRoot);
+            if (callback) callback();
             return;
         }
 
@@ -1750,9 +1904,17 @@
                 }
                 break;
 
+            case 'type-text':
+                if (el && value !== undefined) {
+                    this._typeText(el, value, step, callback);
+                    return; // callback is called by _typeText when done
+                }
+                break;
+
             default:
                 console.warn('[WireframeDemo] Unknown action: ' + action);
         }
+        if (callback) callback();
     };
 
     // ── Highlight helpers ───────────────────────────────────────────────
@@ -1774,6 +1936,102 @@
             this._highlightedEls[i].classList.remove('wfd-highlight');
         }
         this._highlightedEls = [];
+    };
+
+    // ── Type-text action ────────────────────────────────────────────────
+
+    /**
+     * Animate typing text into an element over the step's delay.
+     *
+     * Automatically chooses letter-at-a-time or word-at-a-time based on
+     * what yields a comfortable interval (>= 40ms per chunk).  For very
+     * short text or very long delays, letter mode is used; for long text
+     * with tight timing, word mode keeps it readable.
+     *
+     * Sets .value for input/textarea elements, .textContent otherwise.
+     * Dispatches "input" events on each keystroke for inputs.
+     */
+    WireframeDemo.prototype._typeText = function (el, text, step, callback) {
+        var self = this;
+        var isInput = (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+        var baseDelay = typeof step.delay === 'number' ? step.delay : 2000;
+        var totalTime = baseDelay / this._speedFactor;
+
+        // Reserve 20% of the delay for the post-typing pause
+        var typingTime = totalTime * 0.8;
+
+        // Decide granularity: split into letters, check if interval is comfortable
+        var letters = text.split('');
+        var letterInterval = letters.length > 0 ? typingTime / letters.length : typingTime;
+        var MIN_INTERVAL = 40; // ms — minimum time per chunk
+
+        var chunks, mode;
+        if (letterInterval >= MIN_INTERVAL) {
+            // Letter-at-a-time
+            chunks = letters;
+            mode = 'letter';
+        } else {
+            // Word-at-a-time: split on spaces, preserving spacing
+            chunks = text.match(/\S+\s*/g) || [text];
+            var wordInterval = chunks.length > 0 ? typingTime / chunks.length : typingTime;
+            if (wordInterval < MIN_INTERVAL && chunks.length > 1) {
+                // Even words are too fast — group into larger chunks
+                var targetChunks = Math.max(1, Math.floor(typingTime / MIN_INTERVAL));
+                var charsPerChunk = Math.ceil(text.length / targetChunks);
+                chunks = [];
+                for (var c = 0; c < text.length; c += charsPerChunk) {
+                    chunks.push(text.substring(c, c + charsPerChunk));
+                }
+            }
+            mode = 'word';
+        }
+
+        var interval = chunks.length > 0 ? typingTime / chunks.length : 0;
+        var currentText = '';
+        var chunkIndex = 0;
+
+        if (!step.noHighlight) this._highlight(el, baseDelay);
+
+        // For non-live playback (jumpToStep replay), set instantly
+        if (!callback) {
+            if (isInput) {
+                el.value = text;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            } else {
+                el.textContent = text;
+            }
+            return;
+        }
+
+        function typeNextChunk() {
+            if (!self._playing || chunkIndex >= chunks.length) {
+                // Finished typing — set final value to be safe
+                if (isInput) {
+                    el.value = text;
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                } else {
+                    el.textContent = text;
+                }
+                if (callback) callback();
+                return;
+            }
+
+            currentText += chunks[chunkIndex];
+            chunkIndex++;
+
+            if (isInput) {
+                el.value = currentText;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+            } else {
+                el.textContent = currentText;
+            }
+
+            self._timer = setTimeout(typeNextChunk, interval);
+        }
+
+        typeNextChunk();
     };
 
     // ── Cleanup ─────────────────────────────────────────────────────────
@@ -1803,6 +2061,10 @@
         if (this._timelineLeaveTimer) {
             clearTimeout(this._timelineLeaveTimer);
             this._timelineLeaveTimer = null;
+        }
+        if (this._restartOverlay && this._restartOverlay.parentNode) {
+            this._restartOverlay.parentNode.removeChild(this._restartOverlay);
+            this._restartOverlay = null;
         }
         this._htmlSnapshots = [];
         this.container.removeAttribute('data-wireframe-initialized');

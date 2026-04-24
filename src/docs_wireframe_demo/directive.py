@@ -53,6 +53,7 @@ class WireframeDemoDirective(SphinxDirective):
     option_spec = {
         'steps': str,
         'steps-json': str,
+        'init-steps-json': str,
         'repeat': str,
         'auto-start': str,
         'pause-on-interaction': str,
@@ -102,6 +103,16 @@ class WireframeDemoDirective(SphinxDirective):
                 return [error]
         elif steps_str:
             config['steps'] = [s.strip() for s in steps_str.split(',')]
+
+        init_steps_json = self.options.get('init-steps-json')
+        if init_steps_json:
+            try:
+                config['initSteps'] = json.loads(init_steps_json)
+            except json.JSONDecodeError as exc:
+                error = nodes.error()
+                error += nodes.paragraph(
+                    text=f'wireframe-demo: invalid :init-steps-json:: {exc}')
+                return [error]
 
         # Boolean options
         for opt, key in [('repeat', 'repeat'),
